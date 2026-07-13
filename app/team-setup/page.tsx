@@ -1,341 +1,298 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
+import {
+  type ProjectStudent,
+  useProject,
+} from "@/components/ProjectState/ProjectProvider";
 
-const roleOptions = [
-  "Team Lead",
-  "Evidence Lead",
-  "Stakeholder Lead",
-  "Systems Lead",
-  "Policy Lead",
-  "Presenter",
-  "Research Lead",
-  "Other",
-];
-
-type Member = {
-  name: string;
-  role: string;
-};
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function TeamSetupPage() {
-  const [groupNumber, setGroupNumber] = useState("1");
-  const [groupName, setGroupName] = useState("");
-  const [courseName, setCourseName] = useState("");
-  const [instructorName, setInstructorName] = useState("");
-  const [members, setMembers] = useState<Member[]>([
-    { name: "", role: "Team Lead" },
-    { name: "", role: "Evidence Lead" },
-  ]);
-  const [agreement, setAgreement] = useState({
-    participate: false,
-    evidence: false,
-    ai: false,
-  });
+  const { project, updateSetup } = useProject();
+  const {
+    groupNumber,
+    courseName,
+    professorName,
+    professorEmail,
+    policyIssue,
+    students,
+    teamLead,
+  } = project.setup;
 
-  const filledMembers = useMemo(
-    () => members.filter((member) => member.name.trim()),
-    [members]
+  const completedStudents = useMemo(
+    () =>
+      students.filter(
+        (student) =>
+          student.name.trim() &&
+          emailPattern.test(student.email.trim())
+      ).length,
+    [students]
   );
 
-  const teamLead =
-    members.find((member) => member.role === "Team Lead" && member.name.trim())
-      ?.name || "Not assigned";
+  const professorEmailValid =
+    !professorEmail.trim() ||
+    emailPattern.test(professorEmail.trim());
+
+  const studentEmailsValid = students.every(
+    (student) =>
+      !student.email.trim() ||
+      emailPattern.test(student.email.trim())
+  );
+
+  const teamLeadMatchesStudent = students.some(
+    (student) =>
+      student.name.trim().toLowerCase() ===
+      teamLead.trim().toLowerCase()
+  );
 
   const canContinue =
     groupNumber.trim() &&
     courseName.trim() &&
-    instructorName.trim() &&
-    filledMembers.length >= 2 &&
-    agreement.participate &&
-    agreement.evidence &&
-    agreement.ai;
+    professorName.trim() &&
+    professorEmail.trim() &&
+    professorEmailValid &&
+    policyIssue.trim() &&
+    teamLead.trim() &&
+    teamLeadMatchesStudent &&
+    completedStudents >= 2 &&
+    studentEmailsValid;
 
-  const updateMember = (
+  const updateStudent = (
     index: number,
-    key: keyof Member,
+    key: keyof ProjectStudent,
     value: string
   ) => {
-    setMembers((prev) =>
-      prev.map((member, i) =>
-        i === index ? { ...member, [key]: value } : member
-      )
+    const updatedStudents = students.map((student, studentIndex) =>
+      studentIndex === index
+        ? { ...student, [key]: value }
+        : student
     );
-  };
 
-  const addMember = () => {
-    if (members.length >= 4) return;
-    setMembers((prev) => [...prev, { name: "", role: "Other" }]);
-  };
-
-  const removeMember = (index: number) => {
-    if (members.length <= 2) return;
-    setMembers((prev) => prev.filter((_, i) => i !== index));
+    updateSetup({ students: updatedStudents });
   };
 
   return (
     <main className="page">
       <section
-  className="panelCard"
-  style={{
-    padding: 32,
-    marginBottom: 20,
-    display: "grid",
-    gap: 10,
-  }}
->
-  <div className="fieldNote" style={{ fontWeight: 800 }}>
-    POLICY LAB STUDIO
-  </div>
+        className="panelCard"
+        style={{
+          padding: 32,
+          marginBottom: 20,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className="fieldNote" style={{ fontWeight: 800 }}>
+          POLICY LAB STUDIO
+        </div>
 
-  <h1 style={{ marginBottom: 4 }}>Team Setup</h1>
+        <h1 style={{ marginBottom: 4 }}>Team Setup</h1>
 
-  <p className="hero-subtitle" style={{ marginBottom: 0 }}>
-    Create a group profile for 2–4 students before starting the studio workflow.
-  </p>
+        <p className="hero-subtitle" style={{ marginBottom: 0 }}>
+          Add the basic project and team information before continuing.
+        </p>
       </section>
 
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.3fr) minmax(280px, 0.7fr)",
+          gridTemplateColumns: "minmax(0, 1fr)",
           gap: 18,
-          alignItems: "start",
         }}
       >
-        <div style={{ display: "grid", gap: 18 }}>
-          <div className="panelCard">
-            <div className="panelHeader">
-              <h2>Lab Information</h2>
-              <p className="fieldNote">Basic details for this group project.</p>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 14,
-              }}
-            >
-              <label className="fieldLabel">
-                <span>Group number</span>
-                <input
-                  value={groupNumber}
-                  onChange={(event) => setGroupNumber(event.target.value)}
-                  placeholder="e.g. 1"
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Group name optional</span>
-                <input
-                  value={groupName}
-                  onChange={(event) => setGroupName(event.target.value)}
-                  placeholder="e.g. Policy Innovators"
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Course / session name</span>
-                <input
-                  value={courseName}
-                  onChange={(event) => setCourseName(event.target.value)}
-                  placeholder="e.g. MGHP Policy Lab"
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Instructor / professor name</span>
-                <input
-                  value={instructorName}
-                  onChange={(event) => setInstructorName(event.target.value)}
-                  placeholder="e.g. Dr. ..."
-                />
-              </label>
-            </div>
+        <div className="panelCard">
+          <div className="panelHeader">
+            <h2>Project Information</h2>
           </div>
 
-          <div className="panelCard">
-            <div className="panelHeader">
-              <h2>Team Members</h2>
-              <p className="fieldNote">Enter 2–4 members and assign roles.</p>
-            </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 16,
+            }}
+          >
+            <label className="fieldLabel">
+              <span>Group number</span>
+              <input
+                value={groupNumber}
+                onChange={(event) =>
+                  updateSetup({ groupNumber: event.target.value })
+                }
+                placeholder="e.g. 1"
+              />
+            </label>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              {members.map((member, index) => (
+            <label className="fieldLabel">
+              <span>Course / session</span>
+              <input
+                value={courseName}
+                onChange={(event) =>
+                  updateSetup({ courseName: event.target.value })
+                }
+                placeholder="e.g. MGHP Policy Lab"
+              />
+            </label>
+
+            <label className="fieldLabel">
+              <span>Professor name</span>
+              <input
+                value={professorName}
+                onChange={(event) =>
+                  updateSetup({ professorName: event.target.value })
+                }
+                placeholder="e.g. Dr. ..."
+              />
+            </label>
+
+            <label className="fieldLabel">
+              <span>Professor email</span>
+              <input
+                type="email"
+                value={professorEmail}
+                onChange={(event) =>
+                  updateSetup({ professorEmail: event.target.value })
+                }
+                placeholder="professor@university.edu"
+              />
+
+              {!professorEmailValid ? (
+                <small style={{ color: "#b91c1c", fontWeight: 700 }}>
+                  Enter a valid professor email.
+                </small>
+              ) : null}
+            </label>
+
+            <label
+              className="fieldLabel"
+              style={{ gridColumn: "1 / -1" }}
+            >
+              <span>Policy issue</span>
+              <input
+                value={policyIssue}
+                onChange={(event) =>
+                  updateSetup({ policyIssue: event.target.value })
+                }
+                placeholder="e.g. Access to mental health services"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="panelCard">
+          <div className="panelHeader">
+            <h2>Team Members</h2>
+            <p className="fieldNote">
+              Enter at least two student names and emails.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {students.map((student, index) => {
+              const emailValid =
+                !student.email.trim() ||
+                emailPattern.test(student.email.trim());
+
+              return (
                 <div
                   key={index}
                   className="panelHint"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1.2fr) minmax(160px, 0.8fr) auto",
-                    gap: 10,
-                    alignItems: "center",
+                    gridTemplateColumns:
+                      "minmax(0, 1fr) minmax(0, 1fr)",
+                    gap: 12,
+                    alignItems: "start",
                   }}
                 >
-                  <input
-                    value={member.name}
-                    onChange={(event) =>
-                      updateMember(index, "name", event.target.value)
-                    }
-                    placeholder={`Student ${index + 1} name`}
-                  />
+                  <label className="fieldLabel">
+                    <span>Student {index + 1} name</span>
+                    <input
+                      value={student.name}
+                      onChange={(event) =>
+                        updateStudent(index, "name", event.target.value)
+                      }
+                      placeholder={`Student ${index + 1} name`}
+                    />
+                  </label>
 
-                  <select
-                    value={member.role}
-                    onChange={(event) =>
-                      updateMember(index, "role", event.target.value)
-                    }
-                  >
-                    {roleOptions.map((role) => (
-                      <option key={role}>{role}</option>
-                    ))}
-                  </select>
+                  <label className="fieldLabel">
+                    <span>Student {index + 1} email</span>
+                    <input
+                      type="email"
+                      value={student.email}
+                      onChange={(event) =>
+                        updateStudent(index, "email", event.target.value)
+                      }
+                      placeholder="student@university.edu"
+                    />
 
-                  <button
-                    type="button"
-                    className="button secondaryButton"
-                    onClick={() => removeMember(index)}
-                    disabled={members.length <= 2}
-                    title="Remove member"
-                  >
-                    ×
-                  </button>
+                    {!emailValid ? (
+                      <small
+                        style={{
+                          color: "#b91c1c",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Enter a valid student email.
+                      </small>
+                    ) : null}
+                  </label>
                 </div>
-              ))}
-            </div>
-
-            <div className="actionRow" style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                className="button secondaryButton"
-                onClick={addMember}
-                disabled={members.length >= 4}
-              >
-                + Add Member
-              </button>
-
-              <span className="fieldNote">
-                {members.length}/4 member slots used
-              </span>
-            </div>
-          </div>
-
-          <div className="panelCard">
-            <div className="panelHeader">
-              <h2>Team Agreement</h2>
-              <p className="fieldNote">
-                A short commitment before entering the studio.
-              </p>
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <label className="panelHint">
-                <input
-                  type="checkbox"
-                  checked={agreement.participate}
-                  onChange={() =>
-                    setAgreement((prev) => ({
-                      ...prev,
-                      participate: !prev.participate,
-                    }))
-                  }
-                  style={{ width: "auto", marginRight: 8 }}
-                />
-                All team members agree to participate.
-              </label>
-
-              <label className="panelHint">
-                <input
-                  type="checkbox"
-                  checked={agreement.evidence}
-                  onChange={() =>
-                    setAgreement((prev) => ({
-                      ...prev,
-                      evidence: !prev.evidence,
-                    }))
-                  }
-                  style={{ width: "auto", marginRight: 8 }}
-                />
-                We will make decisions using evidence and policy reasoning.
-              </label>
-
-              <label className="panelHint">
-                <input
-                  type="checkbox"
-                  checked={agreement.ai}
-                  onChange={() =>
-                    setAgreement((prev) => ({
-                      ...prev,
-                      ai: !prev.ai,
-                    }))
-                  }
-                  style={{ width: "auto", marginRight: 8 }}
-                />
-                We will review AI suggestions critically and confirm with the
-                professor.
-              </label>
-            </div>
+              );
+            })}
           </div>
         </div>
 
-        <aside
+        <div className="panelCard">
+          <div className="panelHeader">
+            <h2>Team Lead</h2>
+          </div>
+
+          <label className="fieldLabel">
+            <span>Team lead name</span>
+            <input
+              value={teamLead}
+              onChange={(event) =>
+                updateSetup({ teamLead: event.target.value })
+              }
+              placeholder="Enter one of the student names listed above"
+            />
+
+            {teamLead.trim() && !teamLeadMatchesStudent ? (
+              <small style={{ color: "#b91c1c", fontWeight: 700 }}>
+                Team lead must match one of the student names above.
+              </small>
+            ) : null}
+          </label>
+        </div>
+
+        <div
           className="panelCard"
           style={{
-            position: "sticky",
-            top: 16,
-            display: "grid",
-            gap: 14,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          <div className="panelHeader">
-            <h2>Team Summary</h2>
-            <p className="fieldNote">Live overview of your group.</p>
-          </div>
-
-          <div className="panelHint">
-            <strong>👥 Members</strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {filledMembers.length} of 4 added
-            </p>
-          </div>
-
-          <div className="panelHint">
-            <strong>⭐ Team Lead</strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {teamLead}
-            </p>
-          </div>
-
-          <div className="panelHint">
-            <strong>📚 Course</strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {courseName || "Not added"}
-            </p>
-          </div>
-
-          <div className="panelHint">
-            <strong>🧩 Starting Studio</strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              Problem & Evidence Studio
-            </p>
-          </div>
+          <Link href="/overview" className="button secondaryButton">
+            Back to Overview
+          </Link>
 
           {canContinue ? (
-            <Link className="button" href="/lab-setup">
-              Continue to Lab Setup →
+            <Link href="/resource-hub" className="button">
+              Continue to Resource Hub
             </Link>
           ) : (
             <button type="button" className="button" disabled>
-              Complete setup to continue
+              Complete required fields
             </button>
           )}
-
-          <Link className="button secondaryButton" href="/dashboard">
-            Back to Dashboard
-          </Link>
-        </aside>
+        </div>
       </section>
     </main>
   );

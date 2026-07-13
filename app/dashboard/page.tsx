@@ -6,7 +6,6 @@ type Studio = {
   number: string;
   title: string;
   href: string;
-  status: "Available";
   phase: string;
   description: string;
   output: string;
@@ -17,78 +16,71 @@ const studios: Studio[] = [
     number: "01",
     title: "Problem & Evidence Studio",
     href: "/problem-evidence",
-    status: "Available",
     phase: "Understand",
     description:
-      "Explore the policy problem, organise evidence, identify assumptions, develop a persona if useful, and draft a How Might We question.",
+      "Explore the policy problem, organise evidence, identify affected groups, and frame the core question.",
     output:
-      "Problem frame, evidence notes, assumptions, HMW question, and poster-ready problem content.",
+      "Problem frame, evidence notes, affected population, assumptions, and poster-ready problem content.",
   },
   {
     number: "02",
     title: "Process Studio",
     href: "/stakeholder-systems",
-    status: "Available",
     phase: "Map",
     description:
-      "Map stakeholders, participation structure, power dynamics, process approach, policy canvas, system relationships, gaps, and opportunities.",
+      "Map stakeholders, participation, power dynamics, systems relationships, gaps, and opportunities.",
     output:
-      "Stakeholder analysis, participation layers, approach canvas, process wheel, policy canvas, system map, and opportunity areas.",
+      "Stakeholder analysis, participation layers, process map, policy canvas, and opportunity areas.",
   },
   {
     number: "03",
     title: "Solution Studio",
     href: "/solution",
-    status: "Available",
     phase: "Design",
     description:
-      "Generate intervention ideas, frame solution options, build a hypothesis of change, develop a theory of change, and plan rollout logic.",
+      "Develop policy options, compare alternatives, build a theory of change, and identify risks and indicators.",
     output:
-      "Solution options, hypothesis of change, theory of change, beneficiaries, delivery model, risks, metrics, and rollout strategy.",
+      "Solution options, theory of change, beneficiaries, delivery model, risks, indicators, and rollout strategy.",
   },
   {
     number: "04",
     title: "Implementation Studio",
     href: "/implementation",
-    status: "Available",
     phase: "Plan",
     description:
-      "Plan how the selected solution could be implemented, including governance, activities, timeline, budget, risks, mitigation, monitoring, and scale-up.",
+      "Plan governance, ownership, activities, resources, timeline, monitoring, and scale-up.",
     output:
-      "Implementation plan, activity table, budget plan, risk notes, mitigation plan, timeline, monitoring indicators, and delivery considerations.",
+      "Implementation plan, activity table, budget, timeline, risk plan, and monitoring indicators.",
   },
   {
     number: "05",
     title: "Poster Studio",
     href: "/poster",
-    status: "Available",
     phase: "Assemble",
     description:
-      "Assemble the final policy poster by bringing together outputs from previous studios, organising content, planning visuals, and preparing the poster for review.",
+      "Bring together outputs from the previous studios and organise the final policy poster.",
     output:
-      "Poster canvas, content library, visual planning, AI layout suggestions, professor review, and poster-ready content.",
+      "Poster canvas, structured content, visuals, review notes, and final poster.",
   },
   {
     number: "06",
-    title: "Policy Portfolio",
-    href: "/portfolio",
-    status: "Available",
-    phase: "Explore",
+    title: "Presentation Studio",
+    href: "/presentation",
+    phase: "Present",
     description:
-      "Browse previous policy posters in a gallery format to get inspiration, explore topics, and save examples.",
+      "Prepare the final presentation, pitch script, speaker flow, and likely judges’ questions.",
     output:
-      "Curated poster gallery, category filters, poster previews, keywords, and saved inspiration collection.",
+      "Presentation flow, pitch script, judges’ questions, and final readiness checklist.",
   },
   {
     number: "07",
-    title: "Presentation Studio",
-    href: "/presentation",
-    status: "Available",
-    phase: "Present",
+    title: "Policy Portfolio",
+    href: "/portfolio",
+    phase: "Explore",
     description:
-      "Prepare the final presentation using work completed in previous studios, assign speakers, rehearse the pitch, and practice likely judges' questions.",
+      "Browse previous student posters organised by cohort as a reference archive.",
     output:
-      "Presentation flow, speaker assignments, pitch script, judges' Q&A practice, AI coaching, and final readiness checklist.",
+      "Previous cohort posters organised by program and year.",
   },
 ];
 
@@ -99,7 +91,7 @@ export default function Dashboard() {
         className="panelCard"
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.35fr) minmax(280px, 0.75fr)",
+          gridTemplateColumns: "minmax(0, 1.3fr) minmax(260px, 0.7fr)",
           gap: 24,
           alignItems: "center",
           padding: 30,
@@ -107,215 +99,246 @@ export default function Dashboard() {
         }}
       >
         <div>
-          <h1 style={{ marginBottom: 8 }}>Studio Dashboard</h1>
-
-          <h2
+          <div
+            className="fieldNote"
             style={{
-              fontSize: "1.6rem",
-              fontWeight: 600,
-              color: "#42526b",
-              marginBottom: 14,
-              lineHeight: 1.25,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 8,
             }}
           >
-            Follow the complete Policy Lab journey
-          </h2>
+            Policy Lab Studio
+          </div>
 
-          <p className="hero-subtitle" style={{ marginBottom: 10 }}>
-            Move step by step from problem exploration to process mapping, solution design,
-            implementation planning, poster creation, portfolio exploration, and final presentation.
-          </p>
+          <h1 style={{ marginBottom: 8 }}>Studio Dashboard</h1>
 
-          <p style={{ maxWidth: 900, marginBottom: 0 }}>
-            Each studio builds on the previous one. Students should complete the workflow in sequence,
-            save progress, and use professor feedback before final submission.
+          <p className="hero-subtitle" style={{ marginBottom: 0 }}>
+            Access each studio and move through the Policy Lab journey in
+            sequence.
           </p>
         </div>
 
-        <div className="panelHint" style={{ display: "grid", gap: 12 }}>
-          <strong>Current pathway</strong>
+        <div
+          className="panelHint"
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <strong>Begin the workflow</strong>
 
           <p className="fieldNote" style={{ margin: 0 }}>
-            Problem → Process → Solution → Implementation → Poster → Portfolio → Presentation
+            Start with the Problem & Evidence Studio.
           </p>
 
-          <div className="actionRow" style={{ justifyContent: "flex-start", gap: 10, flexWrap: "wrap" }}>
-            <Link href="/" className="button secondaryButton">
-              Back to Home
-            </Link>
+          <Link href="/problem-evidence" className="button">
+            Start Studio 1
+          </Link>
+        </div>
+      </section>
 
-            <Link href="/problem-evidence" className="button">
-              Start Studio 1
-            </Link>
+      <section
+        className="panelCard"
+        style={{
+          marginBottom: 22,
+          overflow: "hidden",
+        }}
+      >
+        <div className="panelHeader">
+          <h2>Policy Lab Pathway</h2>
+
+          <p className="fieldNote">
+            Policy Lab studios with a brief description of each stage.
+          </p>
+        </div>
+
+        <div
+          style={{
+            overflowX: "auto",
+            paddingBottom: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 12,
+              minWidth: "max-content",
+            }}
+          >
+            {studios.map((studio, index) => (
+              <div
+                key={studio.number}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <Link
+                  href={studio.href}
+                  className="panelHint"
+                  style={{
+                    width: 290,
+                    minHeight: 350,
+                    padding: 20,
+                    textDecoration: "none",
+                    color: "inherit",
+                    border: "1px solid rgba(15, 47, 102, 0.12)",
+                    display: "grid",
+                    gridTemplateRows: "auto auto 1fr auto auto",
+                    gap: 14,
+                    transition:
+                      "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 16,
+                        display: "grid",
+                        placeItems: "center",
+                        background: "rgba(15, 47, 102, 0.08)",
+                        color: "#0f2f66",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {studio.number}
+                    </div>
+
+                    <span
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        background: "#ffffff",
+                        color: "#0f2f66",
+                        fontSize: 13,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {studio.phase}
+                    </span>
+                  </div>
+
+                  <h3
+                    style={{
+                      margin: 0,
+                      color: "#0f2f66",
+                    }}
+                  >
+                    {studio.title}
+                  </h3>
+
+                  <p
+                    className="fieldNote"
+                    style={{
+                      margin: 0,
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    {studio.description}
+                  </p>
+
+                  <div
+                    style={{
+                      paddingTop: 14,
+                      borderTop: "1px solid rgba(15, 47, 102, 0.1)",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        display: "block",
+                        marginBottom: 6,
+                        color: "#0f2f66",
+                      }}
+                    >
+                      Expected output
+                    </strong>
+
+                    <p
+                      className="fieldNote"
+                      style={{
+                        margin: 0,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {studio.output}
+                    </p>
+                  </div>
+
+                  <span
+                    className="button"
+                    style={{
+                      justifySelf: "start",
+                    }}
+                  >
+                    Open Studio →
+                  </span>
+                </Link>
+
+                {index < studios.length - 1 ? (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      minWidth: 34,
+                      height: 34,
+                      borderRadius: "50%",
+                      display: "grid",
+                      placeItems: "center",
+                      background: "#0f2f66",
+                      color: "#ffffff",
+                      fontSize: 20,
+                      fontWeight: 900,
+                      boxShadow: "0 8px 18px rgba(15, 47, 102, 0.18)",
+                    }}
+                  >
+                    →
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="panelCard" style={{ marginBottom: 22 }}>
-        <div className="panelHeader">
-          <h2>Policy Lab Pathway</h2>
-          <p className="fieldNote">
-            This is the complete learning sequence for the Policy Lab Studio.
-          </p>
-        </div>
+      <section
+        className="panelCard"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <Link href="/" className="button secondaryButton">
+          Back to Home
+        </Link>
 
         <div
+          className="actionRow"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
             gap: 10,
+            flexWrap: "wrap",
           }}
         >
-          {studios.map((studio) => (
-            <Link
-              key={studio.number}
-              href={studio.href}
-              className="panelHint"
-              style={{
-                textDecoration: "none",
-                color: "inherit",
-                minHeight: 110,
-                display: "grid",
-                alignContent: "space-between",
-                border: "1px solid rgba(15, 47, 102, 0.12)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <strong style={{ color: "#0f2f66" }}>{studio.number}</strong>
-                <span className="fieldNote">{studio.phase}</span>
-              </div>
+          <Link href="/team-setup" className="button secondaryButton">
+            Back to Team Setup
+          </Link>
 
-              <strong>{studio.title.replace(" Studio", "")}</strong>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section style={{ marginBottom: 22 }}>
-        <div className="panelHeader">
-          <h2>Available Studios</h2>
-          <p className="fieldNote">
-            All core studios are now available in the main workflow.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 18,
-          }}
-        >
-          {studios.map((studio) => (
-            <Link
-              key={studio.title}
-              href={studio.href}
-              className="panelCard"
-              style={{
-                textDecoration: "none",
-                color: "inherit",
-                display: "grid",
-                gap: 12,
-                border: "2px solid rgba(15, 47, 102, 0.12)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <div
-                  className="panelHint"
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 18,
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 900,
-                    color: "#0f2f66",
-                  }}
-                >
-                  {studio.number}
-                </div>
-
-                <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
-                  <span
-                    className="panelHint"
-                    style={{
-                      borderRadius: 999,
-                      padding: "7px 11px",
-                      fontWeight: 800,
-                      color: "#0f2f66",
-                      alignSelf: "start",
-                    }}
-                  >
-                    {studio.status}
-                  </span>
-
-                  <span className="fieldNote">{studio.phase}</span>
-                </div>
-              </div>
-
-              <div>
-                <h3 style={{ marginBottom: 8 }}>{studio.title}</h3>
-
-                <p className="fieldNote" style={{ marginBottom: 12 }}>
-                  {studio.description}
-                </p>
-
-                <div className="panelHint">
-                  <strong>Output:</strong>
-                  <p className="fieldNote" style={{ marginBottom: 0 }}>
-                    {studio.output}
-                  </p>
-                </div>
-              </div>
-
-              <span className="button" style={{ justifySelf: "start" }}>
-                Open →
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="panelCard">
-        <div className="panelHeader">
-          <h2>Future Enhancements</h2>
-          <p className="fieldNote">
-            These are not separate studios yet. They can be added later after the core workflow is stable.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {[
-            {
-              title: "AI Visual Generation",
-              text: "Generate charts, maps, timelines, risk heat maps, and budget visuals from student inputs.",
-            },
-            {
-              title: "Drag-and-Drop Poster Editing",
-              text: "Allow students to move visual cards and content blocks directly on the poster canvas.",
-            },
-            {
-              title: "Professor Review Center",
-              text: "Collect professor comments, student questions, review status, and action logs in one place.",
-            },
-            {
-              title: "Export & Submission",
-              text: "Export posters, presentation scripts, and readiness reports for final submission.",
-            },
-          ].map((item) => (
-            <div key={item.title} className="panelHint">
-              <strong>{item.title}</strong>
-              <p className="fieldNote" style={{ marginBottom: 0, marginTop: 6 }}>
-                {item.text}
-              </p>
-            </div>
-          ))}
+          <Link href="/resource-hub" className="button secondaryButton">
+            Open Resource Hub
+          </Link>
         </div>
       </section>
     </main>

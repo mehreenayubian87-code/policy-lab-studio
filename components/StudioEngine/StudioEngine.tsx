@@ -1,7 +1,8 @@
 "use client";
 
+import StudioResources from "@/components/ResourceHub/StudioResources";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import StudioShell from "@/components/StudioLayout/StudioShell";
 import type {
   ObjectType,
   StudioConfig,
@@ -24,6 +25,10 @@ const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
   const [profQuestion, setProfQuestion] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("Not started");
+  const [chartTitle, setChartTitle] = useState("Chart / Graph");
+  const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
+  const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
+  const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(config.toolGroups.map((group) => [group.title, !group.collapsed]))
@@ -372,6 +377,239 @@ savedAt: new Date().toISOString(),
     setTimeout(createGuidanceCards, 0);
   };
 
+
+  const readFileAsDataUrl = (file: File, callback: (dataUrl: string) => void) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") callback(reader.result);
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleVisualUpload = (file: File, title = "Uploaded Visual") => {
+    readFileAsDataUrl(file, (dataUrl) => {
+      addObject("evidence" as ObjectType, {
+        title: file.name || title,
+        content: "Uploaded visual. Add caption and source in the notes.",
+        width: 460,
+        height: 300,
+        color: "#f8fafc",
+        icon: "🖼️",
+        imageDataUrl: dataUrl,
+        visualType: "image",
+      } as Partial<StudioObject>);
+    });
+  };
+
+  const uploadToSelectedObject = (file: File) => {
+    if (!selectedObject) return;
+
+    readFileAsDataUrl(file, (dataUrl) => {
+      updateObject(selectedObject.id, {
+        imageDataUrl: dataUrl,
+        visualType: "image",
+        content: selectedObject.content || "Uploaded visual.",
+      } as Partial<StudioObject>);
+    });
+  };
+
+  const pasteClipboardToSelectedObject = async () => {
+    if (!selectedObject || typeof navigator === "undefined") return;
+
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((type) => type.startsWith("image/"));
+
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], "pasted-visual.png", { type: imageType });
+          uploadToSelectedObject(file);
+          return;
+        }
+      }
+    } catch {
+      // Some browsers block image clipboard access; fall back to text.
+    }
+
+    try {
+      const text = await navigator.clipboard.readText();
+
+      if (text) {
+        updateObject(selectedObject.id, {
+          content: selectedObject.content
+            ? `${selectedObject.content}\n\n${text}`
+            : text,
+          icon:
+            text.length <= 4 && /\p{Extended_Pictographic}/u.test(text)
+              ? text
+              : selectedObject.icon,
+        } as Partial<StudioObject>);
+      }
+    } catch {
+      return;
+    }
+  };
+
+  const copySelectedObjectContent = async () => {
+    if (!selectedObject || typeof navigator === "undefined") return;
+
+    const valueToCopy =
+      selectedObject.icon ||
+      selectedObject.content ||
+      selectedObject.title ||
+      "";
+
+    if (!valueToCopy) return;
+
+    try {
+      await navigator.clipboard.writeText(valueToCopy);
+      setSaved("Copied.");
+      setTimeout(() => setSaved(""), 1200);
+    } catch {
+      return;
+    }
+  };
+
+  const removeVisualFromSelectedObject = () => {
+    if (!selectedObject) return;
+
+    updateObject(selectedObject.id, {
+      imageDataUrl: undefined,
+      chartData: undefined,
+      visualType: undefined,
+      chartType: undefined,
+      icon: undefined,
+    } as Partial<StudioObject>);
+  };
+
+  const parseNumberValue = (value: string) => {
+    const cleaned = value.trim().toLowerCase().replace(/,/g, "");
+    const number = Number(cleaned.replace(/k|m|%/g, ""));
+
+    if (Number.isNaN(number)) return 0;
+    if (cleaned.includes("m")) return number * 1000000;
+    if (cleaned.includes("k")) return number * 1000;
+    return number;
+  };
+
+  const parseChartRows = () => {
+    const lines = chartDataText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const csvRows = lines
+      .filter((line) => line.includes(","))
+      .slice(lines[0]?.toLowerCase().includes("category") ? 1 : 0)
+      .map((line) => {
+        const [label, value] = line.split(",").map((item) => item.trim());
+
+        return {
+          label: label || "Item",
+          value: parseNumberValue(value || "0"),
+        };
+      })
+      .filter((row) => row.label);
+
+    if (csvRows.length > 0) return csvRows;
+
+    const text = chartDataText.toLowerCase();
+    const rangeMatch = text.match(/from\s+([0-9.,]+[km]?)\s+to\s+([0-9.,]+[km]?).*?(?:over|in|during)\s+([0-9]+)\s+years?(?:.*?\(?([12][0-9]{3})\s*(?:to|-)\s*([12][0-9]{3})\)?)?/i);
+
+    if (rangeMatch) {
+      const startValue = parseNumberValue(rangeMatch[1]);
+      const endValue = parseNumberValue(rangeMatch[2]);
+      const numberOfYears = Math.max(2, Number(rangeMatch[3]) || 10);
+      const startYear = rangeMatch[4] ? Number(rangeMatch[4]) : 1;
+
+      return Array.from({ length: numberOfYears }, (_, index) => {
+        const progress = index / Math.max(numberOfYears - 1, 1);
+        const value = Math.round(startValue + (endValue - startValue) * progress);
+
+        return {
+          label: rangeMatch[4] ? String(startYear + index) : `Year ${index + 1}`,
+          value,
+        };
+      });
+    }
+
+    const yearValueMatches = Array.from(
+      chartDataText.matchAll(/([12][0-9]{3})\s*[=:,-]\s*([0-9.,]+[km%]?)/gi)
+    );
+
+    if (yearValueMatches.length > 0) {
+      return yearValueMatches.map((match) => ({
+        label: match[1],
+        value: parseNumberValue(match[2]),
+      }));
+    }
+
+    const numbers = Array.from(chartDataText.matchAll(/([0-9.,]+[km%]?)/gi)).map(
+      (match) => parseNumberValue(match[1])
+    );
+
+    if (numbers.length > 0) {
+      return numbers.map((value, index) => ({
+        label: `Item ${index + 1}`,
+        value,
+      }));
+    }
+
+    return [];
+  };
+
+  const buildManualChart = () => {
+    const rows = parseChartRows();
+
+    if (rows.length === 0) {
+      setSaved("Add chart data first.");
+      setTimeout(() => setSaved(""), 1400);
+      return;
+    }
+
+    addObject("chart" as ObjectType, {
+      title: chartTitle || "Manual Chart / Graph",
+      content: "Editable chart built from student-entered data. Add caption and source in the inspector.",
+      width: 520,
+      height: 340,
+      color: "#f8fafc",
+      icon: "📊",
+      visualType: "chart",
+      chartType,
+      chartData: rows,
+    } as Partial<StudioObject>);
+  };
+
+  const addSelectedGuidanceCard = (card: (typeof config.guidanceCards)[number]) => {
+    const type = card.objectType ?? "sticky";
+    const preset = objectPresets[type];
+
+    addObject(type, {
+      title: card.title,
+      content: card.prompt,
+      width: type === "sticky" ? 340 : preset.width,
+      height: type === "sticky" ? 180 : preset.height,
+      color: "#fef3c7",
+      icon: "💡",
+    });
+  };
+
+  const copyIconToClipboard = async (icon: string) => {
+    if (typeof navigator === "undefined") return;
+
+    try {
+      await navigator.clipboard.writeText(icon);
+      setSaved("Icon copied. Select a card and use Paste to Card.");
+      setTimeout(() => setSaved(""), 1800);
+    } catch {
+      return;
+    }
+  };
+
   const completedChecklist = config.checklist.filter((item) => checklistState[item]).length;
 const selectedObjectConnections = selectedObject
   ? connections.filter(
@@ -380,731 +618,791 @@ const selectedObjectConnections = selectedObject
         connection.toId === selectedObject.id
     )
   : [];
-  return (
-    <main className="page">
-      <section
-        className="panelCard"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 0.8fr)",
-          gap: 24,
-          alignItems: "center",
-          padding: 26,
-          marginBottom: 16,
-        }}
-      >
-        <div>
-          <h1 style={{ marginBottom: 8 }}>{config.title}</h1>
-          <h2
-            style={{
-              fontSize: "1.6rem",
-              fontWeight: 600,
-              color: "#42526b",
-              marginBottom: 12,
-              lineHeight: 1.25,
-            }}
-          >
-            {config.subtitle}
-          </h2>
-          <p className="hero-subtitle" style={{ marginBottom: 0 }}>
-            Use the toolbox, policy workspace, AI facilitator, professor feedback,
-            checklist, and resources together.
-          </p>
-        </div>
+  const toolsContent = (
+    <>
+      <div className="panelHeader">
+        <h3>Tools</h3>
+        <p className="fieldNote">Add objects, visuals, icons, and arrange the workspace.</p>
+      </div>
 
-        <div className="panelHint" style={{ display: "grid", gap: 10 }}>
-          <strong>Studio Navigation</strong>
-          <div
-            className="actionRow"
-            style={{
-              justifyContent: "flex-start",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <Link className="button secondaryButton" href={config.previousHref}>
-              Previous
-            </Link>
-            <Link className="button secondaryButton" href={config.dashboardHref}>
-              Dashboard
-            </Link>
-            <Link className="button" href={config.nextHref}>
-              Next
-            </Link>
-            <button type="button" className="button" onClick={saveProgress}>
-              Save
-            </button>
-          </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {config.toolGroups.map((group) => {
+          const open = openGroups[group.title];
 
-          {saved ? (
-            <div className="savedBanner" style={{ marginTop: 0 }}>
-              {saved}
+          return (
+            <div key={group.title} className="panelHint" style={{ padding: 10 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenGroups((prev) => ({
+                    ...prev,
+                    [group.title]: !prev[group.title],
+                  }))
+                }
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#0f2f66",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  padding: 0,
+                  width: "100%",
+                  textAlign: "left",
+                }}
+              >
+                {open ? "▾" : "▸"} {group.title}
+              </button>
+
+              {open ? (
+                <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                  {group.tools.filter((tool) => tool.type !== "aiVisual" && !tool.label.toLowerCase().includes("ai visual")).map((tool) => (
+                    <button
+                      key={`${group.title}-${tool.type}-${tool.label}`}
+                      type="button"
+                      className="button secondaryButton"
+                      onClick={() => addObject(tool.type)}
+                      style={{
+                        justifyContent: "flex-start",
+                        padding: "8px 10px",
+                        width: "100%",
+                      }}
+                    >
+                      + {tool.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+
+        <div className="panelHint" style={{ padding: 10 }}>
+          <button
+            type="button"
+            className="button secondaryButton"
+            onClick={() => setShowGuidanceOptions((prev) => !prev)}
+            style={{ width: "100%" }}
+          >
+            + Guidance Cards
+          </button>
+
+          {showGuidanceOptions ? (
+            <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+              {config.guidanceCards.map((card) => (
+                <button
+                  key={card.title}
+                  type="button"
+                  className="button secondaryButton"
+                  onClick={() => addSelectedGuidanceCard(card)}
+                  style={{ justifyContent: "flex-start", width: "100%" }}
+                >
+                  {card.title}
+                </button>
+              ))}
             </div>
           ) : null}
         </div>
-      </section>
+
+        <div className="panelHint" style={{ padding: 10 }}>
+          <strong>Visual Builder</strong>
+          <p className="fieldNote">
+            Upload visuals, build simple charts, or copy icons into cards.
+          </p>
+
+          <label className="button secondaryButton" style={{ cursor: "pointer", justifyContent: "center" }}>
+            + Upload Image / Screenshot
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) handleVisualUpload(file, "Uploaded Image / Screenshot");
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          <label className="button secondaryButton" style={{ cursor: "pointer", justifyContent: "center" }}>
+            + Upload Chart / Graph
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) handleVisualUpload(file, "Uploaded Chart / Graph");
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="button secondaryButton"
+            onClick={() =>
+              addObject("evidence" as ObjectType, {
+                title: "Evidence Figure",
+                content:
+                  "Paste or upload a figure/screenshot from your evidence source. Add caption and source in the inspector.",
+                width: 420,
+                height: 260,
+                color: "#dbeafe",
+                icon: "📎",
+                visualType: "image",
+              } as Partial<StudioObject>)
+            }
+          >
+            + Evidence Figure Card
+          </button>
+
+          <div className="panelHint" style={{ padding: 8, marginTop: 8 }}>
+            <strong>Chart / Graph Builder</strong>
+
+            <label className="fieldLabel">
+              <span>Title</span>
+              <input
+                value={chartTitle}
+                onChange={(event) => setChartTitle(event.target.value)}
+              />
+            </label>
+
+            <label className="fieldLabel">
+              <span>Chart type</span>
+              <select
+                value={chartType}
+                onChange={(event) =>
+                  setChartType(event.target.value as "bar" | "line" | "pie" | "scatter")
+                }
+              >
+                <option value="bar">Bar</option>
+                <option value="line">Line</option>
+                <option value="pie">Pie</option>
+                <option value="scatter">Scatter</option>
+              </select>
+            </label>
+
+            <label className="fieldLabel">
+              <span>Data or trend description</span>
+              <textarea
+                rows={5}
+                value={chartDataText}
+                onChange={(event) => setChartDataText(event.target.value)}
+                placeholder={"Category,Value\nA,10\nB,20\n\nor: from 10K to 100K over 10 years (2000 to 2009)"}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="button"
+              onClick={buildManualChart}
+              style={{ width: "100%" }}
+            >
+              Build Chart
+            </button>
+          </div>
+        </div>
+
+        <div className="panelHint" style={{ padding: 10 }}>
+          <strong>Icon Library</strong>
+          <p className="fieldNote">Choose an icon to copy, then paste it into any selected card.</p>
+          <IconLibrary onAddIcon={copyIconToClipboard} />
+        </div>
+      </div>
+    </>
+  );
+
+  const workspaceContent = (
+    <section
+      className="panelCard"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        className="panelHeader"
+        style={{
+          padding: 12,
+          borderBottom: "1px solid rgba(15, 47, 102, 0.12)",
+          marginBottom: 0,
+        }}
+      >
+        <div>
+          <h2>Policy Workspace</h2>
+          <p className="fieldNote">
+            Drag, resize, duplicate, delete, recolor, zoom, arrange, and save objects.
+          </p>
+        </div>
+      </div>
+
+      <div
+        ref={workspaceRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          background: "#f8fafc",
+          position: "relative",
+          cursor: panState.current.active ? "grabbing" : "default",
+        }}
+        onWheel={(event) => {
+          if (!event.ctrlKey) return;
+          event.preventDefault();
+
+          setZoom((prev) => {
+            const direction = event.deltaY > 0 ? -0.08 : 0.08;
+            const next = Math.min(2.2, Math.max(0.45, prev + direction));
+            return Math.round(next * 100) / 100;
+          });
+        }}
+        onPointerDown={(event) => {
+          const target = event.target as HTMLElement;
+          const isCanvasBackground =
+            target.dataset.workspaceBackground === "true" ||
+            target.dataset.workspaceInner === "true";
+
+          if (!isCanvasBackground && !event.nativeEvent.getModifierState("Space")) return;
+
+          event.preventDefault();
+
+          const workspace = workspaceRef.current;
+          if (!workspace) return;
+
+          panState.current = {
+            active: true,
+            startX: event.clientX,
+            startY: event.clientY,
+            scrollLeft: workspace.scrollLeft,
+            scrollTop: workspace.scrollTop,
+          };
+
+          workspace.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!panState.current.active) return;
+
+          const workspace = workspaceRef.current;
+          if (!workspace) return;
+
+          const dx = event.clientX - panState.current.startX;
+          const dy = event.clientY - panState.current.startY;
+
+          workspace.scrollLeft = panState.current.scrollLeft - dx;
+          workspace.scrollTop = panState.current.scrollTop - dy;
+        }}
+        onPointerUp={(event) => {
+          if (!panState.current.active) return;
+
+          panState.current.active = false;
+
+          const workspace = workspaceRef.current;
+          workspace?.releasePointerCapture(event.pointerId);
+        }}
+        onClick={() => {
+          setSelectedId(null);
+          setSelectedIds([]);
+        }}
+        data-workspace-background="true"
+      >
+        <div
+          data-workspace-inner="true"
+          style={{
+            width: WORKSPACE_WIDTH,
+            height: WORKSPACE_HEIGHT,
+            transform: `scale(${zoom})`,
+            transformOrigin: "0 0",
+            position: "relative",
+            background:
+              "linear-gradient(rgba(15,47,102,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,47,102,0.05) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        >
+          <svg
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: WORKSPACE_WIDTH,
+              height: WORKSPACE_HEIGHT,
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,6 L9,3 z" fill="#0f2f66" />
+              </marker>
+            </defs>
+
+            {connections.map((connection) => {
+              const from = objects.find((object) => object.id === connection.fromId);
+              const to = objects.find((object) => object.id === connection.toId);
+
+              if (!from || !to) return null;
+
+              const x1 = from.x + from.width / 2;
+              const y1 = from.y + from.height / 2;
+              const x2 = to.x + to.width / 2;
+              const y2 = to.y + to.height / 2;
+
+              return (
+                <g key={connection.id}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#0f2f66"
+                    strokeWidth="3"
+                    markerEnd="url(#arrow)"
+                    opacity="0.75"
+                  />
+
+                  <text
+                    x={(x1 + x2) / 2}
+                    y={(y1 + y2) / 2 - 10}
+                    fill="#0f2f66"
+                    fontSize="13"
+                    fontWeight="700"
+                    textAnchor="middle"
+                    style={{
+                      paintOrder: "stroke",
+                      stroke: "white",
+                      strokeWidth: 5,
+                    }}
+                  >
+                    {connection.type}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {objects.map((object) => (
+            <StudioObjectCard
+              key={object.id}
+              object={object}
+              selected={selectedIds.includes(object.id)}
+              connectionStart={connectionFromId === object.id}
+              zoom={zoom}
+              snapToGrid={snapToGrid}
+              onSelect={handleSelectObject}
+              onUpdate={updateObject}
+              onDelete={deleteObject}
+              onDuplicate={duplicateObject}
+            />
+          ))}
+        </div>
+      </div>
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "240px minmax(0, 1fr) 240px",
-          gap: 12,
-          alignItems: "stretch",
-          height: 760,
+          padding: 10,
+          borderTop: "1px solid rgba(15,47,102,0.12)",
+          display: "flex",
+          justifyContent: "flex-start",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8,
         }}
       >
-        <aside
-          className="panelCard"
-          style={{
-            height: "760px",
-            overflowY: "auto",
-            overflowX: "hidden",
-            padding: 16,
-          }}
+        <button type="button" className="button secondaryButton" onClick={arrangeObjects}>
+          Arrange
+        </button>
+
+        <button type="button" className="button secondaryButton" onClick={() => alignSelected("left")}>
+          Align L
+        </button>
+
+        <button type="button" className="button secondaryButton" onClick={() => alignSelected("top")}>
+          Align T
+        </button>
+
+        <button type="button" className="button secondaryButton" onClick={() => distributeSelected("horizontal")}>
+          Distribute H
+        </button>
+
+        <button type="button" className="button secondaryButton" onClick={() => distributeSelected("vertical")}>
+          Distribute V
+        </button>
+
+        <button
+          type="button"
+          className="button secondaryButton"
+          onClick={() =>
+            setZoom((prev) => Math.max(0.5, Math.round((prev - 0.1) * 10) / 10))
+          }
         >
-          <div className="panelHeader">
-            <h3>Toolbox</h3>
-            <p className="fieldNote">Add policy objects.</p>
+          −
+        </button>
+
+        <span className="panelHint" style={{ padding: "8px 12px", fontWeight: 700 }}>
+          {Math.round(zoom * 100)}%
+        </span>
+
+        <button
+          type="button"
+          className="button secondaryButton"
+          onClick={() =>
+            setZoom((prev) => Math.min(2, Math.round((prev + 0.1) * 10) / 10))
+          }
+        >
+          +
+        </button>
+
+        <button type="button" className="button secondaryButton" onClick={resetCanvas}>
+          Reset
+        </button>
+
+        <button type="button" className="button" onClick={saveProgress}>
+          Save Progress
+        </button>
+      </div>
+    </section>
+  );
+
+  const reviewContent = (
+    <>
+      {selectedObject ? (
+        <Panel title="Object Inspector">
+          <div className="panelHint">
+            <strong>{selectedObject.title}</strong>
+            <p className="fieldNote" style={{ marginBottom: 0 }}>
+              {selectedObject.type} • {selectedObject.width} × {selectedObject.height}
+            </p>
+          </div>
+
+          <label className="fieldLabel">
+            <span>Title</span>
+            <input
+              value={selectedObject.title}
+              onChange={(event) =>
+                updateObject(selectedObject.id, { title: event.target.value })
+              }
+            />
+          </label>
+
+          <label className="fieldLabel">
+            <span>Status</span>
+            <select
+              value={selectedObject.status ?? "Draft"}
+              onChange={(event) =>
+                updateObject(selectedObject.id, {
+                  status: event.target.value as StudioObject["status"],
+                })
+              }
+            >
+              <option>Draft</option>
+              <option>Reviewed</option>
+              <option>Professor Reviewed</option>
+              <option>Ready</option>
+            </select>
+          </label>
+
+          <label className="fieldLabel">
+            <span>Colour</span>
+            <select
+              value={selectedObject.color}
+              onChange={(event) =>
+                updateObject(selectedObject.id, { color: event.target.value })
+              }
+            >
+              <option value="#ffd6d6">Red</option>
+              <option value="#dbeafe">Blue</option>
+              <option value="#fef3c7">Yellow</option>
+              <option value="#e9d5ff">Purple</option>
+              <option value="#dcfce7">Green</option>
+              <option value="#ccfbf1">Teal</option>
+              <option value="#f8fafc">White</option>
+            </select>
+          </label>
+
+          <label className="fieldLabel">
+            <span>Reflection Note</span>
+            <textarea
+              rows={4}
+              value={selectedObject.aiHint ?? ""}
+              onChange={(event) =>
+                updateObject(selectedObject.id, { aiHint: event.target.value })
+              }
+            />
+          </label>
+
+          <div className="panelHint" style={{ display: "grid", gap: 8 }}>
+            <strong>Visual Options</strong>
+
+            <label className="button secondaryButton" style={{ cursor: "pointer", justifyContent: "center" }}>
+              Upload / Replace Visual
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadToSelectedObject(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={pasteClipboardToSelectedObject}
+            >
+              Paste to Card
+            </button>
+
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={copySelectedObjectContent}
+            >
+              Copy from Card
+            </button>
+
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={removeVisualFromSelectedObject}
+            >
+              Remove Visual
+            </button>
+          </div>
+
+          <div className="panelHint">
+            <strong>Connections</strong>
+
+            {selectedObjectConnections.length === 0 ? (
+              <p className="fieldNote" style={{ marginBottom: 0 }}>
+                No connections yet.
+              </p>
+            ) : (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {selectedObjectConnections.map((connection) => {
+                  const connectedObject =
+                    objects.find((object) =>
+                      connection.fromId === selectedObject.id
+                        ? object.id === connection.toId
+                        : object.id === connection.fromId
+                    );
+
+                  return (
+                    <div
+                      key={connection.id}
+                      className="panelHint"
+                      style={{ display: "grid", gap: 8 }}
+                    >
+                      <p className="fieldNote" style={{ marginBottom: 0 }}>
+                        {connection.fromId === selectedObject.id ? "To" : "From"}:{" "}
+                        <strong>{connectedObject?.title ?? "Unknown object"}</strong>
+                      </p>
+
+                      <select
+                        value={connection.type}
+                        onChange={(event) =>
+                          updateConnection(connection.id, {
+                            type: event.target.value as StudioConnection["type"],
+                            label: event.target.value,
+                          })
+                        }
+                      >
+                        <option value="related to">related to</option>
+                        <option value="causes">causes</option>
+                        <option value="supports">supports</option>
+                        <option value="blocks">blocks</option>
+                        <option value="depends on">depends on</option>
+                        <option value="improves">improves</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        className="button secondaryButton"
+                        onClick={() => deleteConnection(connection.id)}
+                      >
+                        Delete Connection
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            {config.toolGroups.map((group) => {
-              const open = openGroups[group.title];
-
-              return (
-                <div key={group.title} className="panelHint" style={{ padding: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenGroups((prev) => ({
-                        ...prev,
-                        [group.title]: !prev[group.title],
-                      }))
-                    }
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#0f2f66",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      padding: 0,
-                      width: "100%",
-                      textAlign: "left",
-                    }}
-                  >
-                    {open ? "▾" : "▸"} {group.title}
-                  </button>
-
-                  {open ? (
-                    <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-                      {group.tools.map((tool) => (
-                        <button
-                          key={`${group.title}-${tool.type}-${tool.label}`}
-                          type="button"
-                          className="button secondaryButton"
-                          onClick={() => addObject(tool.type)}
-                          style={{
-                            justifyContent: "flex-start",
-                            padding: "8px 10px",
-                          }}
-                        >
-                          + {tool.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-
-            <div className="panelHint" style={{ padding: 10 }}>
-              <button
-                type="button"
-                className="button secondaryButton"
-                onClick={createGuidanceCards}
-                style={{ width: "100%" }}
-              >
-                + Guidance Cards
-              </button>
-            </div>
-
-            <div className="panelHint" style={{ padding: 10 }}>
-              <strong>AI Visual</strong>
-              <textarea
-                rows={3}
-                value={aiPrompt}
-                onChange={(event) => setAiPrompt(event.target.value)}
-                placeholder="Prompt AI visual..."
-              />
+            {connectionFromId ? (
               <button
                 type="button"
                 className="button"
-                onClick={generateAIVisual}
-                style={{ marginTop: 8 }}
+                onClick={() => completeConnection(selectedObject.id)}
               >
-                Generate
+                Connect to This Object
               </button>
-            </div>
+            ) : (
+              <button
+                type="button"
+                className="button secondaryButton"
+                onClick={() => startConnection(selectedObject.id)}
+              >
+                Start Connection
+              </button>
+            )}
 
-            <IconLibrary
-              onAddIcon={(icon) =>
-                addObject("icon", {
-                  title: "Icon",
-                  content: icon,
-                  icon,
-                  width: 120,
-                  height: 120,
-                  color: "#f8fafc",
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={() => duplicateObject(selectedObject.id)}
+            >
+              Duplicate Object
+            </button>
+
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={() =>
+                updateObject(selectedObject.id, {
+                  locked: !selectedObject.locked,
                 })
               }
-            />
-          </div>
-        </aside>
-
-        <section
-          className="panelCard"
-          style={{
-            padding: 0,
-            overflow: "hidden",
-            height: "760px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            className="panelHeader"
-            style={{
-              padding: 14,
-              borderBottom: "1px solid rgba(15, 47, 102, 0.12)",
-              marginBottom: 0,
-            }}
-          >
-            <div>
-              <h2>Policy Workspace</h2>
-              <p className="fieldNote">
-                Drag, resize, duplicate, delete, recolor, zoom, arrange, and save objects.
-              </p>
-            </div>
-          </div>
-
-          <div
-            ref={workspaceRef}
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: "auto",
-              background: "#f8fafc",
-              position: "relative",
-              cursor: panState.current.active ? "grabbing" : "default",
-            }}
-            onWheel={(event) => {
-              if (!event.ctrlKey) return;
-              event.preventDefault();
-
-              setZoom((prev) => {
-                const direction = event.deltaY > 0 ? -0.08 : 0.08;
-                const next = Math.min(2.2, Math.max(0.45, prev + direction));
-                return Math.round(next * 100) / 100;
-              });
-            }}
-            onPointerDown={(event) => {
-              if (!event.nativeEvent.getModifierState("Space")) return;
-              event.preventDefault();
-
-              const workspace = workspaceRef.current;
-              if (!workspace) return;
-
-              panState.current = {
-                active: true,
-                startX: event.clientX,
-                startY: event.clientY,
-                scrollLeft: workspace.scrollLeft,
-                scrollTop: workspace.scrollTop,
-              };
-
-              workspace.setPointerCapture(event.pointerId);
-            }}
-            onPointerMove={(event) => {
-              if (!panState.current.active) return;
-
-              const workspace = workspaceRef.current;
-              if (!workspace) return;
-
-              const dx = event.clientX - panState.current.startX;
-              const dy = event.clientY - panState.current.startY;
-
-              workspace.scrollLeft = panState.current.scrollLeft - dx;
-              workspace.scrollTop = panState.current.scrollTop - dy;
-            }}
-            onPointerUp={(event) => {
-              if (!panState.current.active) return;
-
-              panState.current.active = false;
-
-              const workspace = workspaceRef.current;
-              workspace?.releasePointerCapture(event.pointerId);
-            }}
-            onClick={() => {
-  setSelectedId(null);
-  setSelectedIds([]);
-}}
-          >
-            <div
-              style={{
-                width: WORKSPACE_WIDTH,
-                height: WORKSPACE_HEIGHT,
-                transform: `scale(${zoom})`,
-                transformOrigin: "0 0",
-                position: "relative",
-                background:
-                  "linear-gradient(rgba(15,47,102,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,47,102,0.05) 1px, transparent 1px)",
-                backgroundSize: "28px 28px",
-              }}
             >
-              <svg
-  style={{
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: WORKSPACE_WIDTH,
-    height: WORKSPACE_HEIGHT,
-    pointerEvents: "none",
-    zIndex: 1,
-  }}
->
-  <defs>
-    <marker
-      id="arrow"
-      markerWidth="10"
-      markerHeight="10"
-      refX="8"
-      refY="3"
-      orient="auto"
-      markerUnits="strokeWidth"
-    >
-      <path d="M0,0 L0,6 L9,3 z" fill="#0f2f66" />
-    </marker>
-  </defs>
+              {selectedObject.locked ? "Unlock Object" : "Lock Object"}
+            </button>
 
-  {connections.map((connection) => {
-    const from = objects.find((object) => object.id === connection.fromId);
-    const to = objects.find((object) => object.id === connection.toId);
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={() =>
+                updateObject(selectedObject.id, {
+                  status: "Ready",
+                })
+              }
+            >
+              Mark Reviewed
+            </button>
 
-    if (!from || !to) return null;
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={() => deleteObject(selectedObject.id)}
+            >
+              Delete Object
+            </button>
+          </div>
+        </Panel>
+      ) : null}
 
-    const x1 = from.x + from.width / 2;
-    const y1 = from.y + from.height / 2;
-    const x2 = to.x + to.width / 2;
-    const y2 = to.y + to.height / 2;
+      <Panel title="Studio Guidance">
+        <p className="fieldNote">Rule-based prompts for this studio.</p>
 
-    return (
-      <g key={connection.id}>
-        <line
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
-          stroke="#0f2f66"
-          strokeWidth="3"
-          markerEnd="url(#arrow)"
-          opacity="0.75"
+        {config.aiGuidance.map((item) => (
+          <div key={item} className="panelHint">
+            {item}
+          </div>
+        ))}
+
+        <div className="panelHint">
+          Please confirm important decisions with your professor.
+        </div>
+      </Panel>
+
+      <Panel title="Professor Feedback">
+        <input
+          value={studentName}
+          onChange={(event) => setStudentName(event.target.value)}
+          placeholder="Student name / Group"
         />
 
-        <text
-  x={(x1 + x2) / 2}
-  y={(y1 + y2) / 2 - 10}
-  fill="#0f2f66"
-  fontSize="13"
-  fontWeight="700"
-  textAnchor="middle"
-  style={{
-    paintOrder: "stroke",
-    stroke: "white",
-    strokeWidth: 5,
-  }}
->
-  {connection.type}
-</text>
-      </g>
-    );
-  })}
-</svg>
-              {objects.map((object) => (
-                <StudioObjectCard
-                  key={object.id}
-                  object={object}
-                  selected={selectedIds.includes(object.id)}
-                  connectionStart={connectionFromId === object.id}
-                  zoom={zoom}
-                  snapToGrid={snapToGrid}
-                  onSelect={handleSelectObject}
-                  onUpdate={updateObject}
-                  onDelete={deleteObject}
-                  onDuplicate={duplicateObject}
-                />
-              ))}
-            </div>
-          </div>
+        <textarea
+          rows={4}
+          value={profQuestion}
+          onChange={(event) => setProfQuestion(event.target.value)}
+          placeholder="Write your question for the professor..."
+        />
 
-          <div
-            style={{
-              padding: 10,
-              borderTop: "1px solid rgba(15,47,102,0.12)",
-              display: "flex",
-              justifyContent: "flex-start",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <button type="button" className="button secondaryButton" onClick={() => addObject("sticky")}>
-              + Sticky
-            </button>
-            <button type="button" className="button secondaryButton" onClick={() => addObject("evidence")}>
-              + Evidence
-            </button>
-            <button type="button" className="button secondaryButton" onClick={() => addObject("chart")}>
-              + Chart
-            </button>
-            <button type="button" className="button secondaryButton" onClick={arrangeObjects}>
-              Arrange
-            </button>
-            <button type="button" className="button secondaryButton" onClick={() => alignSelected("left")}>
-  Align L
-</button>
-
-<button type="button" className="button secondaryButton" onClick={() => alignSelected("top")}>
-  Align T
-</button>
-
-<button type="button" className="button secondaryButton" onClick={() => distributeSelected("horizontal")}>
-  Distribute H
-</button>
-
-<button type="button" className="button secondaryButton" onClick={() => distributeSelected("vertical")}>
-  Distribute V
-</button>
-            <button
-            
-              type="button"
-              className="button secondaryButton"
-              onClick={() =>
-                setZoom((prev) => Math.max(0.5, Math.round((prev - 0.1) * 10) / 10))
-              }
-            >
-              −
-            </button>
-            <span className="panelHint" style={{ padding: "8px 12px", fontWeight: 700 }}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() =>
-                setZoom((prev) => Math.min(2, Math.round((prev + 0.1) * 10) / 10))
-              }
-            >
-              +
-            </button>
-            <button type="button" className="button secondaryButton" onClick={resetCanvas}>
-              Reset
-            </button>
-          </div>
-        </section>
-
-        <aside
-          className="panelCard"
-          style={{
-            height: "760px",
-            overflowY: "auto",
-            overflowX: "hidden",
-            padding: 16,
-          }}
+        <select
+          value={feedbackStatus}
+          onChange={(event) => setFeedbackStatus(event.target.value)}
         >
-          {selectedObject ? (
-            <Panel title="Object Inspector">
-              <div className="panelHint">
-                <strong>{selectedObject.title}</strong>
-                <p className="fieldNote" style={{ marginBottom: 0 }}>
-                  {selectedObject.type} • {selectedObject.width} × {selectedObject.height}
-                </p>
-              </div>
+          <option>Not started</option>
+          <option>In progress</option>
+          <option>Resolved</option>
+        </select>
 
-              <label className="fieldLabel">
-                <span>Title</span>
-                <input
-                  value={selectedObject.title}
-                  onChange={(event) =>
-                    updateObject(selectedObject.id, { title: event.target.value })
-                  }
-                />
-              </label>
+        <button type="button" className="button secondaryButton">
+          Save Feedback
+        </button>
+      </Panel>
 
-              <label className="fieldLabel">
-                <span>Status</span>
-                <select
-                  value={selectedObject.status ?? "Draft"}
-                  onChange={(event) =>
-                    updateObject(selectedObject.id, {
-                      status: event.target.value as StudioObject["status"],
-                    })
-                  }
-                >
-                  <option>Draft</option>
-                  <option>AI Reviewed</option>
-                  <option>Professor Reviewed</option>
-                  <option>Ready</option>
-                </select>
-              </label>
-
-              <label className="fieldLabel">
-                <span>Colour</span>
-                <select
-                  value={selectedObject.color}
-                  onChange={(event) =>
-                    updateObject(selectedObject.id, { color: event.target.value })
-                  }
-                >
-                  <option value="#ffd6d6">Red</option>
-                  <option value="#dbeafe">Blue</option>
-                  <option value="#fef3c7">Yellow</option>
-                  <option value="#e9d5ff">Purple</option>
-                  <option value="#dcfce7">Green</option>
-                  <option value="#ccfbf1">Teal</option>
-                  <option value="#f8fafc">White</option>
-                </select>
-              </label>
-
-              <label className="fieldLabel">
-                <span>AI Hint</span>
-                <textarea
-                  rows={4}
-                  value={selectedObject.aiHint ?? ""}
-                  onChange={(event) =>
-                    updateObject(selectedObject.id, { aiHint: event.target.value })
-                  }
-                />
-              </label>
-
-              <div className="panelHint">
-                <strong>Poster Section</strong>
-                <p className="fieldNote" style={{ marginBottom: 0 }}>
-                  {selectedObject.posterSection || "Not assigned"}
-                </p>
-              </div>
-
-              <div className="panelHint">
-                <strong>Presentation Section</strong>
-                <p className="fieldNote" style={{ marginBottom: 0 }}>
-                  {selectedObject.presentationSection || "Not assigned"}
-                </p>
-              </div>
-              <div className="panelHint">
-  <strong>Connections</strong>
-
-  {selectedObjectConnections.length === 0 ? (
-    <p className="fieldNote" style={{ marginBottom: 0 }}>
-      No connections yet.
-    </p>
-  ) : (
-    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-      {selectedObjectConnections.map((connection) => {
-        const connectedObject =
-          objects.find((object) =>
-            connection.fromId === selectedObject.id
-              ? object.id === connection.toId
-              : object.id === connection.fromId
-          );
-
-        return (
-          <div
-            key={connection.id}
-            className="panelHint"
-            style={{ display: "grid", gap: 8 }}
-          >
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {connection.fromId === selectedObject.id ? "To" : "From"}:{" "}
-              <strong>{connectedObject?.title ?? "Unknown object"}</strong>
-            </p>
-
-            <select
-              value={connection.type}
-              onChange={(event) =>
-                updateConnection(connection.id, {
-                  type: event.target.value as StudioConnection["type"],
-                  label: event.target.value,
-                })
-              }
+      <Panel title={`Checklist (${completedChecklist}/${config.checklist.length})`}>
+        <div style={{ display: "grid", gap: 6 }}>
+          {config.checklist.map((item) => (
+            <label
+              key={item}
+              style={{
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: ".82rem",
+              }}
             >
-              <option value="related to">related to</option>
-              <option value="causes">causes</option>
-              <option value="supports">supports</option>
-              <option value="blocks">blocks</option>
-              <option value="depends on">depends on</option>
-              <option value="improves">improves</option>
-            </select>
+              <input
+                type="checkbox"
+                checked={Boolean(checklistState[item])}
+                onChange={() =>
+                  setChecklistState((prev) => ({
+                    ...prev,
+                    [item]: !prev[item],
+                  }))
+                }
+                style={{ width: "auto" }}
+              />
+              <span>{item}</span>
+            </label>
+          ))}
+        </div>
+      </Panel>
 
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() => deleteConnection(connection.id)}
-            >
-              Delete Connection
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</div>
-              <div style={{ display: "grid", gap: 8 }}>
-  {connectionFromId ? (
-    <button
-      type="button"
-      className="button"
-      onClick={() => completeConnection(selectedObject.id)}
-    >
-      Connect to This Object
-    </button>
-  ) : (
-    <button
-      type="button"
-      className="button secondaryButton"
-      onClick={() => startConnection(selectedObject.id)}
-    >
-      Start Connection
-    </button>
-  )}
+    <Panel title="Resources">
+  <StudioResources
+    studio={
+      config.id === "problem"
+        ? "Problem Studio"
+        : config.id === "process"
+        ? "Process Studio"
+        : config.id === "solution"
+        ? "Solution Studio"
+        : "Implementation Studio"
+    }
+  />
+</Panel>
+    </>
+  );
 
-  <button
-    type="button"
-    className="button secondaryButton"
-    onClick={() => duplicateObject(selectedObject.id)}
-  >
-    Duplicate Object
-  </button>
-
-                <button
-                  type="button"
-                  className="button secondaryButton"
-                  onClick={() =>
-                    updateObject(selectedObject.id, {
-                      locked: !selectedObject.locked,
-                    })
-                  }
-                >
-                  {selectedObject.locked ? "Unlock Object" : "Lock Object"}
-                </button>
-
-                <button
-                  type="button"
-                  className="button secondaryButton"
-                  onClick={() =>
-                    updateObject(selectedObject.id, {
-                      status: "AI Reviewed",
-                    })
-                  }
-                >
-                  Mark AI Reviewed
-                </button>
-
-                <button
-                  type="button"
-                  className="button secondaryButton"
-                  onClick={() => deleteObject(selectedObject.id)}
-                >
-                  Delete Object
-                </button>
-              </div>
-            </Panel>
-          ) : (
-            <>
-              <Panel title="AI Facilitator">
-                <p className="fieldNote">Active guidance for this studio.</p>
-
-                {config.aiGuidance.map((item) => (
-                  <div key={item} className="panelHint">
-                    {item}
-                  </div>
-                ))}
-
-                <div className="panelHint">
-                  Please confirm important decisions with your professor.
-                </div>
-              </Panel>
-
-              <Panel title="Professor Feedback">
-                <input
-                  value={studentName}
-                  onChange={(event) => setStudentName(event.target.value)}
-                  placeholder="Student name / Group"
-                />
-
-                <textarea
-                  rows={4}
-                  value={profQuestion}
-                  onChange={(event) => setProfQuestion(event.target.value)}
-                  placeholder="Write your question for the professor..."
-                />
-
-                <select
-                  value={feedbackStatus}
-                  onChange={(event) => setFeedbackStatus(event.target.value)}
-                >
-                  <option>Not started</option>
-                  <option>In progress</option>
-                  <option>Resolved</option>
-                </select>
-
-                <button type="button" className="button secondaryButton">
-                  Save Feedback
-                </button>
-              </Panel>
-
-              <Panel title={`Checklist (${completedChecklist}/${config.checklist.length})`}>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {config.checklist.map((item) => (
-                    <label
-                      key={item}
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "center",
-                        fontSize: ".82rem",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={Boolean(checklistState[item])}
-                        onChange={() =>
-                          setChecklistState((prev) => ({
-                            ...prev,
-                            [item]: !prev[item],
-                          }))
-                        }
-                        style={{ width: "auto" }}
-                      />
-                      <span>{item}</span>
-                    </label>
-                  ))}
-                </div>
-              </Panel>
-
-              <Panel title="Resources">
-                {config.resources.map((resource) => (
-                  <div key={resource.title} className="panelHint">
-                    <strong>{resource.title}</strong>
-                    <p className="fieldNote" style={{ marginBottom: 0 }}>
-                      {resource.type}: {resource.note}
-                    </p>
-                  </div>
-                ))}
-              </Panel>
-            </>
-          )}
-        </aside>
-      </div>
-    </main>
+  return (
+    <StudioShell
+      title={config.title}
+      previousHref={config.previousHref}
+      nextHref={config.nextHref}
+      dashboardHref={config.dashboardHref}
+      onSave={saveProgress}
+      savedMessage={saved}
+      tools={toolsContent}
+      workspace={workspaceContent}
+      review={reviewContent}
+    />
   );
 }
 

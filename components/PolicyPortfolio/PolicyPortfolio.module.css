@@ -1,0 +1,366 @@
+.hero {
+  padding: 22px 26px;
+  margin-bottom: 14px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 47, 102, 0.12);
+  box-shadow: 0 12px 30px rgba(15, 47, 102, 0.06);
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: center;
+}
+
+.hero h1 {
+  margin: 4px 0 0;
+  color: #0f2f66;
+  font-size: clamp(34px, 4vw, 50px);
+  line-height: 1.05;
+}
+
+.kicker {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.portfolioSection {
+  padding: 20px;
+  border: 1px solid rgba(15, 47, 102, 0.12);
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(15, 47, 102, 0.05);
+}
+
+.sectionHeading,
+.selectedCohortHeader {
+  margin-bottom: 16px;
+}
+
+.sectionHeading h2,
+.selectedCohortHeader h2 {
+  margin: 4px 0 0;
+  color: #0f2f66;
+  font-size: 28px;
+}
+
+.cohortGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cohortCard {
+  min-height: 158px;
+  padding: 18px;
+  border: 1px solid rgba(15, 47, 102, 0.12);
+  border-radius: 20px;
+  background: #f8fafc;
+  color: #0f2f66;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease,
+    box-shadow 160ms ease, background 160ms ease;
+}
+
+.cohortCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 47, 102, 0.35);
+  background: #eef4ff;
+  box-shadow: 0 14px 28px rgba(15, 47, 102, 0.09);
+}
+
+.cohortCard span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.cohortCard h3 {
+  margin: 12px 0 8px;
+  font-size: 23px;
+}
+
+.cohortCard p {
+  margin: 0 0 16px;
+  color: #475569;
+  font-weight: 800;
+}
+
+.cohortCard strong {
+  font-size: 14px;
+}
+
+.backButton {
+  margin-bottom: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #0f2f66;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  text-decoration: underline;
+}
+
+.searchRow {
+  margin-bottom: 18px;
+}
+
+.searchRow input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 47, 102, 0.16);
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+}
+
+.posterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.editorialCard {
+  position: relative;
+  min-height: 230px;
+  overflow: hidden;
+  padding: 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #0f2f66;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(15, 47, 102, 0.05);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  transition: transform 160ms ease, border-color 160ms ease,
+    box-shadow 160ms ease, background 160ms ease;
+}
+
+.editorialCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 47, 102, 0.32);
+  background: #fbfdff;
+  box-shadow: 0 14px 28px rgba(15, 47, 102, 0.1);
+}
+
+.editorialAccent {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: #0f2f66;
+}
+
+.editorialMeta {
+  padding-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editorialBody {
+  align-self: center;
+}
+
+.editorialBody h3 {
+  margin: 0 0 8px;
+  color: #0f2f66;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.editorialBody p {
+  margin: 0;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.editorialAction {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  color: #0f2f66;
+  font-weight: 900;
+}
+
+.editorialAction span {
+  font-size: 20px;
+  transition: transform 160ms ease;
+}
+
+.editorialCard:hover .editorialAction span {
+  transform: translateX(4px);
+}
+
+.emptyState {
+  padding: 34px;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #64748b;
+  text-align: center;
+  font-weight: 800;
+}
+
+.closingNote {
+  margin-top: 18px;
+  padding: 22px 24px;
+  border: 1px solid rgba(15, 47, 102, 0.1);
+  border-radius: 20px;
+  background: #f8fafc;
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.closingAccent {
+  border-radius: 999px;
+  background: #0f2f66;
+}
+
+.closingNote strong {
+  color: #0f2f66;
+  font-size: 18px;
+}
+
+.closingNote p {
+  margin: 6px 0 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 22px;
+  background: rgba(15, 23, 42, 0.78);
+  display: grid;
+  place-items: center;
+}
+
+.modal {
+  width: min(1180px, 96vw);
+  height: min(900px, 94vh);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.modalHeader {
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.modalHeader span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.modalHeader h2 {
+  margin: 3px 0;
+  color: #0f2f66;
+}
+
+.modalHeader p {
+  margin: 0;
+  color: #64748b;
+  font-weight: 750;
+}
+
+.closeButton {
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #0f2f66;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.pdfFrame {
+  min-height: 0;
+  background: #dbe2ea;
+}
+
+.pdfFrame iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+}
+
+.modalActions {
+  padding: 12px 18px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1050px) {
+  .cohortGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .posterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .heroActions {
+    justify-content: flex-start;
+  }
+
+  .cohortGrid,
+  .posterGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalBackdrop {
+    padding: 8px;
+  }
+
+  .modal {
+    width: 100%;
+    height: 96vh;
+  }
+}
