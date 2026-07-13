@@ -7,6 +7,7 @@ import {
   buildPosterContent,
   readAllStudioObjects,
 } from "@/components/ProjectState/projectService";
+import styles from "./poster.module.css";
 
 type PosterBlockKind =
   | "section"
@@ -29,6 +30,10 @@ type PosterBlock = {
   width: number;
   height: number;
   kind: PosterBlockKind;
+  imageUrl?: string;
+  caption?: string;
+  altText?: string;
+  borderStyle?: "none" | "rounded" | "shadow" | "frame";
 };
 
 type PosterHeader = {
@@ -40,7 +45,22 @@ type PosterHeader = {
   instructor: string;
 };
 
-const POSTER_STORAGE_KEY = "plstudio_poster_v2";
+type ThemeName = "academic" | "modern" | "minimal" | "dark" | "institutional";
+type PosterSize = "A0" | "A1" | "A2";
+type Orientation = "portrait" | "landscape";
+type LayoutName = "academic" | "story" | "dashboard" | "custom";
+type SideTab =
+  | "Home"
+  | "Elements"
+  | "Text"
+  | "Visuals"
+  | "Layout"
+  | "Theme"
+  | "Import"
+  | "Coach";
+
+const POSTER_STORAGE_KEY = "plstudio_poster_v3";
+const AUTOSAVE_INTERVAL_MS = 45000;
 
 const initialHeader: PosterHeader = {
   title: "POLICY POSTER TITLE",
@@ -236,109 +256,177 @@ const posterSections = [
   ["indicators", "Dashboard", "Indicators / metrics"],
   ["funding", "Funding", "Cost & resources"],
   ["partners", "Partners", "Collaborators"],
-  ["team", "Team", "Team information"],
+] as const;
+
+const importOptions = [
+  ["problem", "Problem Statement"],
+  ["evidence", "Evidence"],
+  ["stakeholders", "Stakeholders"],
+  ["journey", "User Journey"],
+  ["solution", "Theory of Change / Solution"],
+  ["indicators", "Dashboard / Indicators"],
+  ["timeline", "Timeline"],
+  ["images", "Images"],
+  ["charts", "Charts"],
+  ["icons", "Icons"],
+  ["personas", "Personas"],
+] as const;
+
+const sideTabs: { icon: string; label: SideTab }[] = [
+  { icon: "🏠", label: "Home" },
+  { icon: "🧩", label: "Elements" },
+  { icon: "T", label: "Text" },
+  { icon: "🖼️", label: "Visuals" },
+  { icon: "▦", label: "Layout" },
+  { icon: "🎨", label: "Theme" },
+  { icon: "⬆", label: "Import" },
+  { icon: "🤖", label: "Coach" },
 ];
 
-const visualElements = [
-  ["textbox", "Text Box", "Editable text block"],
-  ["image", "Image", "Image placeholder with caption"],
-  ["chart", "Chart", "Chart placeholder with notes"],
-  ["icon", "Icon", "Icon placeholder"],
-  ["callout", "Callout", "Highlighted note"],
-  ["divider", "Divider", "Section divider"],
-];
+const themeMap: Record<ThemeName, { label: string; primary: string; accent: string; bg: string }> = {
+  academic: { label: "Academic Blue", primary: "#06265c", accent: "#f97316", bg: "#ffffff" },
+  modern: { label: "Modern", primary: "#0f766e", accent: "#7c3aed", bg: "#ffffff" },
+  minimal: { label: "Minimal", primary: "#111827", accent: "#64748b", bg: "#ffffff" },
+  dark: { label: "Dark", primary: "#020617", accent: "#38bdf8", bg: "#f8fafc" },
+  institutional: { label: "Institutional", primary: "#0f2f66", accent: "#b45309", bg: "#ffffff" },
+};
+
+const placeholderTexts = ["describe", "add", "summarize", "placeholder"];
 
 export default function PosterStudioPage() {
   const { importObjects } = useProject();
 
-  const [posterHeader, setPosterHeader] = useState(initialHeader);
+  const [posterHeader, setPosterHeader] = useState<PosterHeader>(initialHeader);
   const [blocks, setBlocks] = useState<PosterBlock[]>(initialBlocks);
   const [selectedBlockId, setSelectedBlockId] = useState("problem");
   const [selectedHeaderField, setSelectedHeaderField] =
     useState<keyof PosterHeader | null>(null);
-  const [aiPrompt, setAiPrompt] = useState("");
+  const [activeSideTab, setActiveSideTab] = useState<SideTab>("Elements");
   const [layoutSuggestions, setLayoutSuggestions] = useState<string[]>([]);
   const [reviewText, setReviewText] = useState("");
   const [zoom, setZoom] = useState(0.58);
-  const [savedStatus, setSavedStatus] = useState("");
+  const [savedStatus, setSavedStatus] = useState("Not saved yet");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeName>("academic");
+  const [posterSize, setPosterSize] = useState<PosterSize>("A0");
+  const [orientation, setOrientation] = useState<Orientation>("landscape");
+  const [isPreview, setIsPreview] = useState(false);
+  const [selectedImports, setSelectedImports] = useState<Record<string, boolean>>(
+    Object.fromEntries(importOptions.map(([key]) => [key, true]))
+  );
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const selectedBlock = blocks.find((block) => block.id === selectedBlockId);
+  const currentTheme = themeMap[theme];
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(POSTER_STORAGE_KEY);
       if (!raw) return;
-
       const parsed = JSON.parse(raw);
       if (parsed.posterHeader) setPosterHeader(parsed.posterHeader);
       if (Array.isArray(parsed.blocks)) setBlocks(parsed.blocks);
+      if (parsed.theme) setTheme(parsed.theme);
+      if (parsed.posterSize) setPosterSize(parsed.posterSize);
+      if (parsed.orientation) setOrientation(parsed.orientation);
+      if (parsed.savedAt) {
+        setLastSavedAt(parsed.savedAt);
+        setSavedStatus(`Loaded saved work`);
+      }
     } catch (error) {
       console.error(error);
     }
   }, []);
 
-  const selectedBlock = blocks.find((block) => block.id === selectedBlockId);
+  const savePoster = (silent = false) => {
+    const savedAt = new Date().toISOString();
+    localStorage.setItem(
+      POSTER_STORAGE_KEY,
+      JSON.stringify({
+        posterHeader,
+        blocks,
+        theme,
+        posterSize,
+        orientation,
+        savedAt,
+      })
+    );
+    setLastSavedAt(savedAt);
+    setSavedStatus(silent ? "Auto-saved" : "Progress saved");
+  };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => savePoster(true), AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [posterHeader, blocks, theme, posterSize, orientation]);
 
   const completedCount = useMemo(
-    () => blocks.filter((block) => block.content.trim()).length,
+    () =>
+      blocks.filter((block) => {
+        const text = block.content.trim().toLowerCase();
+        return text && !placeholderTexts.some((item) => text.startsWith(item));
+      }).length,
+    [blocks]
+  );
+
+  const progressPercent = Math.round((completedCount / blocks.length) * 100);
+
+  const wordCount = useMemo(() => {
+    const text = [posterHeader.title, posterHeader.subtitle, ...blocks.map((b) => b.content)].join(" ");
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }, [posterHeader, blocks]);
+
+  const missingSections = useMemo(
+    () =>
+      blocks
+        .filter((block) => {
+          const text = block.content.trim().toLowerCase();
+          return !text || placeholderTexts.some((item) => text.startsWith(item));
+        })
+        .map((block) => block.title),
     [blocks]
   );
 
   const getBlockStatus = (block?: PosterBlock) => {
     if (!block) return "+";
-    const text = block.content.trim();
-
+    const text = block.content.trim().toLowerCase();
     if (!text) return "○";
-    if (
-      text.startsWith("Describe") ||
-      text.startsWith("Add") ||
-      text.startsWith("Summarize") ||
-      text.includes("placeholder")
-    ) {
+    if (placeholderTexts.some((item) => text.startsWith(item)) || text.includes("placeholder")) {
       return "⚠";
     }
-
     return "✓";
+  };
+
+  const updateHeader = (changes: Partial<PosterHeader>) => {
+    setPosterHeader((prev) => ({ ...prev, ...changes }));
+    setSavedStatus("Unsaved changes");
+  };
+
+  const updateBlock = (id: string, changes: Partial<PosterBlock>) => {
+    setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, ...changes } : block)));
+    setSavedStatus("Unsaved changes");
   };
 
   const scrollToHeader = (field: keyof PosterHeader = "title") => {
     setSelectedHeaderField(field);
     setSelectedBlockId("");
-
-    workspaceRef.current?.scrollTo({
-      left: 0,
-      top: 0,
-      behavior: "smooth",
-    });
+    workspaceRef.current?.scrollTo({ left: 0, top: 0, behavior: "smooth" });
   };
 
   const scrollToBlock = (block: PosterBlock) => {
     setSelectedHeaderField(null);
     setSelectedBlockId(block.id);
-
     workspaceRef.current?.scrollTo({
-      left: Math.max(0, block.x * zoom - 80),
-      top: Math.max(0, (block.y + 170) * zoom - 80),
+      left: Math.max(0, block.x * zoom - 60),
+      top: Math.max(0, (block.y + 170) * zoom - 60),
       behavior: "smooth",
     });
-  };
-
-  const updateHeader = (changes: Partial<PosterHeader>) => {
-    setPosterHeader((prev) => ({ ...prev, ...changes }));
-    setSavedStatus("");
-  };
-
-  const updateBlock = (id: string, changes: Partial<PosterBlock>) => {
-    setBlocks((prev) =>
-      prev.map((block) => (block.id === id ? { ...block, ...changes } : block))
-    );
-    setSavedStatus("");
   };
 
   const addVisualElement = (kind: PosterBlockKind) => {
     const id = `${kind}-${Date.now()}`;
     const visualCount = blocks.filter((block) => block.kind !== "section").length;
-
     const block: PosterBlock = {
       id,
       number: "+",
@@ -346,18 +434,23 @@ export default function PosterStudioPage() {
         kind === "textbox"
           ? "Text Box"
           : kind === "image"
-          ? "Image Placeholder"
+          ? "Image"
           : kind === "chart"
-          ? "Chart Placeholder"
+          ? "Imported Chart"
           : kind === "icon"
-          ? "Icon Placeholder"
+          ? "Imported Icon"
           : kind === "callout"
           ? "Callout"
           : "Divider",
-      type: "Visual Element",
-      accent: "#0f2f66",
-      x: kind === "divider" ? 0 : 80,
-      y: 1380 + visualCount * 180,
+      type:
+        kind === "chart"
+          ? "Imported from previous studio"
+          : kind === "icon"
+          ? "Imported from previous studio"
+          : "Visual Element",
+      accent: currentTheme.accent,
+      x: kind === "divider" ? 0 : 80 + (visualCount % 2) * 440,
+      y: 1380 + Math.floor(visualCount / 2) * 210,
       width: kind === "divider" ? 1200 : 420,
       height: kind === "divider" ? 60 : 180,
       kind,
@@ -365,26 +458,89 @@ export default function PosterStudioPage() {
         kind === "textbox"
           ? "Add your text here."
           : kind === "image"
-          ? "Image placeholder. Add caption or image notes here."
+          ? "Image placeholder. Upload, paste, or drag an image here."
           : kind === "chart"
-          ? "Chart placeholder. Add chart title, data source, and key message."
+          ? "Imported chart content will appear here."
           : kind === "icon"
-          ? "Icon placeholder. Describe the icon meaning."
+          ? "Imported icon or visual symbol will appear here."
           : kind === "callout"
           ? "Highlight an important point here."
           : "Section divider.",
     };
-
     setBlocks((prev) => [...prev, block]);
     setSelectedHeaderField(null);
     setSelectedBlockId(block.id);
-
+    setSavedStatus("Unsaved changes");
     setTimeout(() => scrollToBlock(block), 50);
+  };
+
+  const handleImageFile = (file: File, blockId: string) => {
+    if (!file.type.startsWith("image/")) {
+      setReviewText("Please upload an image file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateBlock(blockId, {
+        imageUrl: String(reader.result),
+        content: "Image uploaded successfully.",
+      });
+      setActiveSideTab("Visuals");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, blockId: string) => {
+    const file = event.target.files?.[0];
+    if (file) handleImageFile(file, blockId);
+    event.target.value = "";
+  };
+
+  const handleWorkspacePaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    const imageBlock = selectedBlock?.kind === "image" ? selectedBlock : undefined;
+    if (imageBlock) {
+      handleImageFile(file, imageBlock.id);
+    } else {
+      const id = `image-${Date.now()}`;
+      const newBlock: PosterBlock = {
+        id,
+        number: "+",
+        title: "Image",
+        type: "Pasted image",
+        accent: currentTheme.accent,
+        x: 80,
+        y: 1380,
+        width: 420,
+        height: 240,
+        kind: "image",
+        content: "Image pasted successfully.",
+      };
+      setBlocks((prev) => [...prev, newBlock]);
+      setSelectedBlockId(id);
+      setSelectedHeaderField(null);
+      setTimeout(() => handleImageFile(file, id), 0);
+    }
+    event.preventDefault();
+  };
+
+  const handleImageDrop = (event: React.DragEvent<HTMLDivElement>, blockId?: string) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    const targetBlockId = blockId || (selectedBlock?.kind === "image" ? selectedBlock.id : undefined);
+    if (targetBlockId) {
+      handleImageFile(file, targetBlockId);
+    } else {
+      addVisualElement("image");
+    }
   };
 
   const duplicateSelectedBlock = () => {
     if (!selectedBlock) return;
-
     const duplicate: PosterBlock = {
       ...selectedBlock,
       id: `${selectedBlock.kind}-${Date.now()}`,
@@ -392,27 +548,24 @@ export default function PosterStudioPage() {
       x: selectedBlock.x + 40,
       y: selectedBlock.y + 40,
     };
-
     setBlocks((prev) => [...prev, duplicate]);
     setSelectedBlockId(duplicate.id);
     setSelectedHeaderField(null);
+    setSavedStatus("Unsaved changes");
   };
 
   const deleteSelectedBlock = () => {
     if (!selectedBlock || selectedBlock.kind === "section") return;
     setBlocks((prev) => prev.filter((block) => block.id !== selectedBlock.id));
     setSelectedBlockId("problem");
+    setSavedStatus("Unsaved changes");
   };
 
   const copySelectedContent = async () => {
-    const text = selectedHeaderField
-      ? posterHeader[selectedHeaderField]
-      : selectedBlock?.content ?? "";
-
+    const text = selectedHeaderField ? posterHeader[selectedHeaderField] : selectedBlock?.content ?? "";
     try {
       await navigator.clipboard.writeText(text);
-      setSavedStatus("Copied.");
-      setTimeout(() => setSavedStatus(""), 1500);
+      setSavedStatus("Copied");
     } catch {
       setReviewText("Copy failed. Please copy manually.");
     }
@@ -421,163 +574,213 @@ export default function PosterStudioPage() {
   const pasteIntoSelected = async () => {
     try {
       const text = await navigator.clipboard.readText();
-
       if (selectedHeaderField) {
         updateHeader({ [selectedHeaderField]: text });
         return;
       }
-
-      if (selectedBlock) {
-        updateBlock(selectedBlock.id, { content: text });
-      }
+      if (selectedBlock) updateBlock(selectedBlock.id, { content: text });
     } catch {
-      setReviewText("Paste failed. Please paste manually.");
+      setReviewText("Paste failed. Please paste manually into the editor.");
     }
   };
-    const importFromStudios = () => {
+
+  const readPosterContent = () => {
     const importedObjects = readAllStudioObjects();
     importObjects(importedObjects);
+    return buildPosterContent(importedObjects);
+  };
 
-    const posterContent = buildPosterContent(importedObjects);
+  const importSelectedFromStudios = () => {
+    const posterContent = readPosterContent();
+    const smartContent: Record<string, string | undefined> = {
+      problem: posterContent.problem,
+      evidence: posterContent.evidence,
+      stakeholders: posterContent.stakeholders,
+      journey: posterContent.population,
+      solution: posterContent.solution,
+      implementation: posterContent.implementation,
+      risks: posterContent.risks,
+      indicators: posterContent.indicators,
+      timeline: posterContent.implementation,
+      funding: posterContent.implementation,
+      partners: posterContent.stakeholders,
+    };
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (!selectedImports[block.id]) return block;
+        return { ...block, content: smartContent[block.id] || block.content };
+      })
+    );
+    if (selectedImports.charts) importChartFromStudios("Problem/Evidence");
+    if (selectedImports.icons) importIconFromStudios("Problem/Evidence");
+    setReviewText("Selected content imported from previous studios.");
+    setSavedStatus("Unsaved changes");
+  };
 
-    const smartContent = {
-      problem:
-        posterContent.problem ||
-        "Summarize the main problem statement, root causes, and HMW question from the Problem Studio.",
-      evidence:
-        posterContent.evidence ||
-        "Add the strongest statistics, evidence cards, and sources from the Problem Studio.",
-      population:
-        posterContent.population ||
-        "Summarize affected users, personas, and user journey insights.",
-      stakeholders:
-        posterContent.stakeholders ||
-        "Summarize key stakeholders, system actors, power relationships, and system barriers.",
-      solution:
-        posterContent.solution ||
-        "Summarize the selected solution, theory of change, and why this option was prioritized.",
-      journey:
-        posterContent.population ||
-        "Describe the user pathway from problem experience to service engagement and improved outcomes.",
-      implementation:
-        posterContent.implementation ||
-        "Summarize implementation phases, owners, resources, and key activities.",
-      risks:
-        posterContent.risks ||
-        "Summarize implementation risks, barriers, and mitigation strategies.",
-      indicators:
-        posterContent.indicators ||
-        "Summarize monitoring indicators, targets, dashboard ideas, and data sources.",
-      timeline:
-        posterContent.implementation ||
-        "Summarize the timeline from preparation to pilot, scale-up, and sustainability.",
-      funding:
-        posterContent.implementation ||
-        "Summarize budget, funding, ownership, and resource needs.",
-      partners:
-        posterContent.stakeholders ||
-        "Summarize partners, collaborators, institutions, and team information.",
+  const importChartFromStudios = (source: "Problem/Evidence" | "Process" | "Solution" | "Implementation") => {
+    const posterContent = readPosterContent();
+
+    const contentMap: Record<typeof source, string | undefined> = {
+      "Problem/Evidence": posterContent.evidence || posterContent.problem,
+      Process: posterContent.stakeholders || posterContent.population,
+      Solution: posterContent.solution,
+      Implementation: posterContent.implementation || posterContent.indicators,
     };
 
+    const content =
+      contentMap[source] ||
+      `No finalized chart-ready content was found from ${source}. Add chart notes here after reviewing that studio.`;
+
+    const chartBlock: PosterBlock = {
+      id: `chart-${Date.now()}`,
+      number: "+",
+      title: `${source} Chart`,
+      type: `Imported from ${source} Studio`,
+      accent: "#0f766e",
+      x: 460,
+      y: 1380 + blocks.filter((block) => block.kind === "chart").length * 240,
+      width: 440,
+      height: 220,
+      kind: "chart",
+      content,
+    };
+
+    setBlocks((prev) => [...prev, chartBlock]);
+    setSelectedBlockId(chartBlock.id);
+    setSelectedHeaderField(null);
+    setSavedStatus("Unsaved changes");
+    setReviewText(`Chart imported from ${source} studio content.`);
+  };
+
+  const importIconFromStudios = (source: "Problem/Evidence" | "Process" | "Solution" | "Implementation") => {
+    const posterContent = readPosterContent();
+
+    const contentMap: Record<typeof source, string | undefined> = {
+      "Problem/Evidence": posterContent.problem || posterContent.evidence,
+      Process: posterContent.stakeholders || posterContent.population,
+      Solution: posterContent.solution,
+      Implementation: posterContent.implementation || posterContent.indicators,
+    };
+
+    const content =
+      contentMap[source] ||
+      `No finalized icon-related content was found from ${source}. Add a short icon label here.`;
+
+    const iconBlock: PosterBlock = {
+      id: `icon-${Date.now()}`,
+      number: "+",
+      title: `${source} Icon`,
+      type: `Imported from ${source} Studio`,
+      accent: "#7c3aed",
+      x: 920,
+      y: 1380 + blocks.filter((block) => block.kind === "icon").length * 200,
+      width: 340,
+      height: 180,
+      kind: "icon",
+      content,
+    };
+
+    setBlocks((prev) => [...prev, iconBlock]);
+    setSelectedBlockId(iconBlock.id);
+    setSelectedHeaderField(null);
+    setSavedStatus("Unsaved changes");
+    setReviewText(`Icon imported from ${source} studio content.`);
+  };
+
+  const applyPosterLayout = (layout: LayoutName) => {
+    if (layout === "custom") {
+      const customLayout = {
+        problem: { x: 0, y: 0, width: 670, height: 260 },
+        evidence: { x: 690, y: 0, width: 670, height: 260 },
+        stakeholders: { x: 0, y: 280, width: 440, height: 260 },
+        population: { x: 460, y: 280, width: 440, height: 260 },
+        journey: { x: 920, y: 280, width: 440, height: 260 },
+        solution: { x: 0, y: 560, width: 670, height: 300 },
+        implementation: { x: 690, y: 560, width: 670, height: 300 },
+        risks: { x: 0, y: 880, width: 440, height: 240 },
+        indicators: { x: 460, y: 880, width: 440, height: 240 },
+        timeline: { x: 920, y: 880, width: 440, height: 240 },
+        funding: { x: 0, y: 1140, width: 440, height: 220 },
+        partners: { x: 460, y: 1140, width: 900, height: 220 },
+      };
+
+      setBlocks((prev) =>
+        prev.map((block) => ({
+          ...block,
+          ...(customLayout[block.id as keyof typeof customLayout] ?? {}),
+        }))
+      );
+      setReviewText("Applied Custom Layout. You can now drag blocks on the canvas to fine-tune placement.");
+      setSavedStatus("Unsaved changes");
+      return;
+    }
+    const layouts = {
+      academic: {
+        problem: { x: 0, y: 0, width: 440, height: 230 },
+        evidence: { x: 460, y: 0, width: 440, height: 230 },
+        population: { x: 920, y: 0, width: 440, height: 230 },
+        stakeholders: { x: 0, y: 250, width: 440, height: 260 },
+        solution: { x: 460, y: 250, width: 440, height: 260 },
+        journey: { x: 920, y: 250, width: 440, height: 260 },
+        implementation: { x: 0, y: 530, width: 670, height: 300 },
+        risks: { x: 690, y: 530, width: 670, height: 300 },
+        indicators: { x: 0, y: 850, width: 440, height: 230 },
+        timeline: { x: 460, y: 850, width: 440, height: 230 },
+        funding: { x: 920, y: 850, width: 440, height: 230 },
+        partners: { x: 0, y: 1100, width: 1360, height: 230 },
+      },
+      story: {
+        problem: { x: 0, y: 0, width: 420, height: 240 },
+        population: { x: 440, y: 0, width: 420, height: 240 },
+        journey: { x: 880, y: 0, width: 480, height: 520 },
+        evidence: { x: 0, y: 260, width: 420, height: 260 },
+        stakeholders: { x: 440, y: 260, width: 420, height: 260 },
+        solution: { x: 0, y: 540, width: 650, height: 300 },
+        implementation: { x: 670, y: 540, width: 690, height: 300 },
+        risks: { x: 0, y: 860, width: 440, height: 240 },
+        indicators: { x: 460, y: 860, width: 440, height: 240 },
+        timeline: { x: 920, y: 860, width: 440, height: 240 },
+        funding: { x: 0, y: 1120, width: 440, height: 220 },
+        partners: { x: 460, y: 1120, width: 900, height: 220 },
+      },
+      dashboard: {
+        problem: { x: 0, y: 0, width: 430, height: 220 },
+        solution: { x: 450, y: 0, width: 430, height: 220 },
+        indicators: { x: 900, y: 0, width: 460, height: 220 },
+        evidence: { x: 0, y: 240, width: 670, height: 320 },
+        timeline: { x: 690, y: 240, width: 670, height: 320 },
+        stakeholders: { x: 0, y: 580, width: 430, height: 260 },
+        population: { x: 450, y: 580, width: 430, height: 260 },
+        risks: { x: 900, y: 580, width: 460, height: 260 },
+        implementation: { x: 0, y: 860, width: 900, height: 300 },
+        funding: { x: 920, y: 860, width: 440, height: 300 },
+        journey: { x: 0, y: 1180, width: 670, height: 240 },
+        partners: { x: 690, y: 1180, width: 670, height: 240 },
+      },
+    };
     setBlocks((prev) =>
       prev.map((block) => ({
         ...block,
-        content:
-          smartContent[block.id as keyof typeof smartContent] || block.content,
+        ...(layouts[layout][block.id as keyof typeof layouts.academic] ?? {}),
       }))
     );
-
-    setReviewText(
-      "Imported and organized content from previous studios. Please review each section for clarity, flow, and visual balance."
-    );
-    setSavedStatus("");
+    setReviewText(`Applied ${layout} layout.`);
+    setSavedStatus("Unsaved changes");
   };
 
-  const savePoster = () => {
-    localStorage.setItem(
-      POSTER_STORAGE_KEY,
-      JSON.stringify({
-        posterHeader,
-        blocks,
-        savedAt: new Date().toISOString(),
-      })
-    );
-
-    setSavedStatus("Poster saved successfully.");
-    setReviewText("Poster saved successfully.");
-    setTimeout(() => setSavedStatus(""), 2500);
+  const generateLayouts = () => {
+    setLayoutSuggestions(["Academic Conference Layout", "Storytelling / User Journey Layout", "Dashboard Policy Layout", "Custom Layout"]);
+    setActiveSideTab("Layout");
   };
-
- const applyPosterLayout = (layout: "academic" | "story" | "dashboard") => {
-  const layouts = {
-    academic: {
-      problem: { x: 0, y: 0, width: 440, height: 230 },
-      evidence: { x: 460, y: 0, width: 440, height: 230 },
-      population: { x: 920, y: 0, width: 440, height: 230 },
-      stakeholders: { x: 0, y: 250, width: 440, height: 260 },
-      solution: { x: 460, y: 250, width: 440, height: 260 },
-      journey: { x: 920, y: 250, width: 440, height: 260 },
-      implementation: { x: 0, y: 530, width: 670, height: 300 },
-      risks: { x: 690, y: 530, width: 670, height: 300 },
-      indicators: { x: 0, y: 850, width: 440, height: 230 },
-      timeline: { x: 460, y: 850, width: 440, height: 230 },
-      funding: { x: 920, y: 850, width: 440, height: 230 },
-      partners: { x: 0, y: 1100, width: 1360, height: 230 },
-    },
-
-    story: {
-      problem: { x: 0, y: 0, width: 420, height: 240 },
-      population: { x: 440, y: 0, width: 420, height: 240 },
-      journey: { x: 880, y: 0, width: 480, height: 520 },
-      evidence: { x: 0, y: 260, width: 420, height: 260 },
-      stakeholders: { x: 440, y: 260, width: 420, height: 260 },
-      solution: { x: 0, y: 540, width: 650, height: 300 },
-      implementation: { x: 670, y: 540, width: 690, height: 300 },
-      risks: { x: 0, y: 860, width: 440, height: 240 },
-      indicators: { x: 460, y: 860, width: 440, height: 240 },
-      timeline: { x: 920, y: 860, width: 440, height: 240 },
-      funding: { x: 0, y: 1120, width: 440, height: 220 },
-      partners: { x: 460, y: 1120, width: 900, height: 220 },
-    },
-
-    dashboard: {
-      problem: { x: 0, y: 0, width: 430, height: 220 },
-      solution: { x: 450, y: 0, width: 430, height: 220 },
-      indicators: { x: 900, y: 0, width: 460, height: 220 },
-      evidence: { x: 0, y: 240, width: 670, height: 320 },
-      timeline: { x: 690, y: 240, width: 670, height: 320 },
-      stakeholders: { x: 0, y: 580, width: 430, height: 260 },
-      population: { x: 450, y: 580, width: 430, height: 260 },
-      risks: { x: 900, y: 580, width: 460, height: 260 },
-      implementation: { x: 0, y: 860, width: 900, height: 300 },
-      funding: { x: 920, y: 860, width: 440, height: 300 },
-      journey: { x: 0, y: 1180, width: 670, height: 240 },
-      partners: { x: 690, y: 1180, width: 670, height: 240 },
-    },
-  };
-
-  setBlocks((prev) =>
-    prev.map((block) => ({
-      ...block,
-      ...(layouts[layout][block.id as keyof typeof layouts.academic] ?? {}),
-    }))
-  );
-
-  setReviewText(`Applied ${layout} poster layout.`);
-};
-
-const generateLayouts = () => {
-  setLayoutSuggestions([
-    "Academic Conference Layout",
-    "Storytelling / User Journey Layout",
-    "Dashboard Policy Layout",
-  ]);
-};
 
   const reviewPoster = () => {
-    setReviewText(
-      "AI Review: Check that the problem is specific, evidence supports the claim, the solution links to root causes, implementation has owners and timeline, and indicators are measurable."
-    );
+    const issues = [];
+    if (missingSections.length) issues.push(`Missing/placeholder sections: ${missingSections.join(", ")}.`);
+    if (!blocks.some((b) => b.kind === "image" && b.imageUrl)) issues.push("Consider adding at least one relevant image or visual.");
+    if (wordCount > 700) issues.push("Text may be too long for a conference poster.");
+    if (!issues.length) issues.push("Poster looks close to export-ready. Review citations and visual balance before final export.");
+    setReviewText(issues.join(" "));
+    setActiveSideTab("Coach");
   };
 
   const resetPosterLayout = () => {
@@ -586,436 +789,337 @@ const generateLayouts = () => {
     setSelectedBlockId("problem");
     setSelectedHeaderField(null);
     localStorage.removeItem(POSTER_STORAGE_KEY);
-    setSavedStatus("Poster layout reset.");
-    setTimeout(() => setSavedStatus(""), 2500);
+    setSavedStatus("Layout reset");
   };
-  return (
-    <main className="page">
-      <section
-        className="panelCard"
-        style={{
-          padding: 26,
-          marginBottom: 16,
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) auto",
-          gap: 24,
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <div className="fieldNote" style={{ fontWeight: 800 }}>
-            POLICY LAB STUDIO
-          </div>
 
-          <h1 style={{ marginBottom: 6 }}>Poster Studio</h1>
+  const updateTheme = (nextTheme: ThemeName) => {
+    const selected = themeMap[nextTheme];
+    setTheme(nextTheme);
+    setBlocks((prev) => prev.map((block) => ({ ...block, accent: block.kind === "section" ? block.accent : selected.accent })));
+    setSavedStatus("Unsaved changes");
+  };
 
-          <p className="hero-subtitle" style={{ marginBottom: 0 }}>
-            Convert your policy work into a professional conference poster.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-  <Link href="/dashboard" className="button secondaryButton">
-    Dashboard
-  </Link>
-
-  <Link href="/implementation" className="button secondaryButton">
-    Previous Studio
-  </Link>
-
-  <Link href="/presentation" className="button secondaryButton">
-    Next Studio
-  </Link>
-
-  <button
-    className="button secondaryButton"
-    type="button"
-    onClick={() =>
-      alert("Preview mode will show the final poster without editing panels.")
+  const renderLeftPanel = () => {
+    if (activeSideTab === "Home") {
+      return (
+        <>
+          <h2>Poster Studio</h2>
+          <p className="fieldNote">Build a conference-style poster from your completed policy work.</p>
+          <button type="button" className="button" onClick={() => savePoster(false)}>Save Progress</button>
+          <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview Poster"}</button>
+          <button type="button" className="button secondaryButton" onClick={() => window.print()}>Export / Print</button>
+        </>
+      );
     }
-  >
-    Preview
-  </button>
 
-  <button
-    className="button"
-    type="button"
-    onClick={() =>
-      alert("Export will be connected later for PDF/PNG download.")
-    }
-  >
-    Export
-  </button>
-</div>
-</section>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "240px minmax(0, 1fr) 240px",
-          gap: 12,
-          alignItems: "stretch",
-          height: 760,
-        }}
-      >
-        <aside
-          className="panelCard"
-          style={{
-            height: "760px",
-            overflowY: "auto",
-            overflowX: "hidden",
-            padding: 16,
-          }}
-        >
-          <div className="panelHeader">
-            <h2>Poster Elements</h2>
-            <p className="fieldNote">Navigate, edit, or add poster elements.</p>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <div
-              className="fieldNote"
-              style={{ fontWeight: 900, marginBottom: 10 }}
-            >
-              POSTER SECTIONS
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              {posterSections.map(([id, title, note]) => {
-                const target =
-                  id === "header"
-                    ? undefined
-                    : id === "team"
-                    ? blocks.find((block) => block.id === "partners")
-                    : blocks.find((block) => block.id === id);
-
-                const active =
-                  (id === "header" && selectedHeaderField) ||
-                  target?.id === selectedBlockId;
-
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    className="panelHint"
-                    style={{
-                      textAlign: "left",
-                      cursor: "pointer",
-                      border: active
-                        ? "3px solid #0f2f66"
-                        : "1px solid #e5e7eb",
-                      background: active ? "#eef4ff" : "#fff",
-                    }}
-                    onClick={() => {
-                      if (id === "header") {
-                        scrollToHeader("title");
-                        return;
-                      }
-
-                      if (target) scrollToBlock(target);
-                    }}
-                  >
-                    <strong>
-                      {id === "header" ? "✓" : getBlockStatus(target)} {title}
-                    </strong>
-                    <p className="fieldNote" style={{ marginBottom: 0 }}>
-                      {note}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <div
-              className="fieldNote"
-              style={{ fontWeight: 900, marginBottom: 10 }}
-            >
-              VISUAL ELEMENTS
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              {visualElements.map(([id, title, note]) => (
+    if (activeSideTab === "Elements") {
+      return (
+        <>
+          <h2>Document Outline</h2>
+          <p className="fieldNote">Jump to any section and edit it on the poster.</p>
+          <div className={styles.toolList}>
+            {posterSections.map(([id, title, note]) => {
+              const target = id === "header" ? undefined : blocks.find((block) => block.id === id);
+              const active = (id === "header" && selectedHeaderField) || target?.id === selectedBlockId;
+              return (
                 <button
                   key={id}
                   type="button"
-                  className="panelHint"
-                  style={{
-                    textAlign: "left",
-                    cursor: "pointer",
-                    border: "1px solid #e5e7eb",
-                    background: "#fff",
-                  }}
-                  onClick={() => addVisualElement(id as PosterBlockKind)}
+                  className={`${styles.toolCardButton} ${active ? styles.toolCardActive : ""}`}
+                  onClick={() => (id === "header" ? scrollToHeader("title") : target && scrollToBlock(target))}
                 >
-                  <strong>+ {title}</strong>
-                  <p className="fieldNote" style={{ marginBottom: 0 }}>
-                    {note}
-                  </p>
+                  <strong>{id === "header" ? "✓" : getBlockStatus(target)} {title}</strong>
+                  <span>{note}</span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        </aside>
+        </>
+      );
+    }
 
-        <section
-          className="panelCard"
-          style={{
-            padding: 0,
-            overflow: "hidden",
-            height: "760px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            className="panelHeader"
-            style={{
-              padding: 14,
-              borderBottom: "1px solid rgba(15, 47, 102, 0.12)",
-              marginBottom: 0,
-            }}
-          >
+    if (activeSideTab === "Text") {
+      return (
+        <>
+          <h2>Text Tools</h2>
+          <p className="fieldNote">Add supporting text elements to the poster.</p>
+          <div className={styles.toolList}>
+            <button type="button" className={styles.toolCardButton} onClick={() => addVisualElement("textbox")}><strong>+ Text Box</strong><span>Editable text block</span></button>
+            <button type="button" className={styles.toolCardButton} onClick={() => addVisualElement("callout")}><strong>+ Callout</strong><span>Highlight a key point</span></button>
+            <button type="button" className={styles.toolCardButton} onClick={() => addVisualElement("divider")}><strong>+ Divider</strong><span>Add a section divider</span></button>
+          </div>
+          {selectedBlock && selectedBlock.kind !== "image" ? renderElementEditor() : null}
+        </>
+      );
+    }
+
+    if (activeSideTab === "Visuals") {
+      const importSources: Array<"Problem/Evidence" | "Process" | "Solution" | "Implementation"> = [
+        "Problem/Evidence",
+        "Process",
+        "Solution",
+        "Implementation",
+      ];
+
+      return (
+        <>
+          <h2>Visuals</h2>
+          <p className="fieldNote">Upload images here. Charts and icons are imported from previous studio outputs.</p>
+          <div className={styles.toolList}>
+            <button type="button" className={styles.toolCardButton} onClick={() => addVisualElement("image")}><strong>+ Image</strong><span>Upload, paste, or drag-drop</span></button>
+          </div>
+
+          <h3 className={styles.panelSubheading}>Import Chart</h3>
+          <div className={styles.toolList}>
+            {importSources.map((source) => (
+              <button key={`chart-${source}`} type="button" className={styles.toolCardButton} onClick={() => importChartFromStudios(source)}><strong>{source}</strong><span>Import chart-ready content</span></button>
+            ))}
+          </div>
+
+          <h3 className={styles.panelSubheading}>Import Icon</h3>
+          <div className={styles.toolList}>
+            {importSources.map((source) => (
+              <button key={`icon-${source}`} type="button" className={styles.toolCardButton} onClick={() => importIconFromStudios(source)}><strong>{source}</strong><span>Import icon-related content</span></button>
+            ))}
+          </div>
+
+          {selectedBlock?.kind === "image" ? renderImageEditor() : null}
+        </>
+      );
+    }
+
+    if (activeSideTab === "Layout") {
+      const generated = layoutSuggestions.length ? layoutSuggestions : ["Academic Conference Layout", "Storytelling / User Journey Layout", "Dashboard Policy Layout", "Custom Layout"];
+      return (
+        <>
+          <h2>Poster Layouts</h2>
+          <p className="fieldNote">Generate and apply one layout. This is the only layout control area.</p>
+          <button type="button" className="button" onClick={generateLayouts}>Generate Layouts</button>
+          <div className={styles.toolList}>
+            {generated.map((layout, index) => {
+              const layoutType: LayoutName = index === 0 ? "academic" : index === 1 ? "story" : index === 2 ? "dashboard" : "custom";
+              return <button key={layout} type="button" className={styles.toolCardButton} onClick={() => applyPosterLayout(layoutType)}><strong>{layout}</strong><span>Apply</span></button>;
+            })}
+          </div>
+        </>
+      );
+    }
+
+    if (activeSideTab === "Theme") {
+      return (
+        <>
+          <h2>Theme</h2>
+          <p className="fieldNote">Theme controls change poster colors and export setup.</p>
+          <div className={styles.compactGrid}>
+            {(Object.keys(themeMap) as ThemeName[]).map((item) => (
+              <button key={item} type="button" className={`${styles.pillButton} ${theme === item ? styles.pillActive : ""}`} onClick={() => updateTheme(item)}>{themeMap[item].label}</button>
+            ))}
+          </div>
+          <h3>Poster Size</h3>
+          <div className={styles.compactGrid}>
+            {(["A0", "A1", "A2"] as PosterSize[]).map((size) => <button key={size} type="button" className={`${styles.pillButton} ${posterSize === size ? styles.pillActive : ""}`} onClick={() => setPosterSize(size)}>{size}</button>)}
+          </div>
+          <h3>Orientation</h3>
+          <div className={styles.compactGrid}>
+            {(["landscape", "portrait"] as Orientation[]).map((item) => <button key={item} type="button" className={`${styles.pillButton} ${orientation === item ? styles.pillActive : ""}`} onClick={() => setOrientation(item)}>{item}</button>)}
+          </div>
+        </>
+      );
+    }
+
+    if (activeSideTab === "Import") {
+      return (
+        <>
+          <h2>Import</h2>
+          <p className="fieldNote">Choose what to bring from previous studios.</p>
+          <div className={styles.checkboxList}>
+            {importOptions.map(([key, label]) => (
+              <label key={key} className={styles.checkboxRow}>
+                <input type="checkbox" checked={Boolean(selectedImports[key])} onChange={(event) => setSelectedImports((prev) => ({ ...prev, [key]: event.target.checked }))} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <button type="button" className="button" onClick={importSelectedFromStudios}>Import Selected</button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <h2>Poster Coach</h2>
+        <p className="fieldNote">Review quality, progress, accessibility, citations, and export readiness.</p>
+        <button type="button" className="button" onClick={reviewPoster}>Review Poster</button>
+        <div className={styles.coachCard}><strong>Progress Report</strong><span>{completedCount}/{blocks.length} sections complete ({progressPercent}%).</span></div>
+        <div className={styles.coachCard}><strong>Poster Checklist</strong><span>Problem, evidence, solution, implementation, indicators, partners.</span></div>
+        <div className={styles.coachCard}><strong>Submission Checklist</strong><span>Title, team, course, sources, image captions, export-ready layout.</span></div>
+        <div className={styles.coachCard}><strong>Conference Tips</strong><span>Use short text, strong headings, clear visuals, and visible recommendations.</span></div>
+        <div className={styles.coachCard}><strong>Accessibility Check</strong><span>Alt text for images, high contrast, readable font sizes.</span></div>
+        <div className={styles.coachCard}><strong>Citation Check</strong><span>Name data sources and avoid unsupported claims.</span></div>
+        <div className={styles.coachCard}><strong>Word Count</strong><span>{wordCount} words.</span></div>
+        <div className={styles.coachCard}><strong>Export Readiness</strong><span>{missingSections.length ? `Review: ${missingSections.join(", ")}` : "Ready for preview/export check."}</span></div>
+        {reviewText ? <div className={styles.reviewBox}><strong>AI Review</strong><span>{reviewText}</span></div> : null}
+      </>
+    );
+  };
+
+  function renderElementEditor() {
+    if (!selectedBlock) return null;
+    return (
+      <div className={styles.editorBox}>
+        <h3>Element Editor</h3>
+        <label className="fieldLabel"><span>Title</span><input value={selectedBlock.title} onChange={(event) => updateBlock(selectedBlock.id, { title: event.target.value })} /></label>
+        <label className="fieldLabel"><span>Type / Caption</span><input value={selectedBlock.type} onChange={(event) => updateBlock(selectedBlock.id, { type: event.target.value })} /></label>
+        <label className="fieldLabel"><span>Content</span><textarea rows={6} value={selectedBlock.content} onChange={(event) => updateBlock(selectedBlock.id, { content: event.target.value })} /></label>
+        <div className={styles.twoButtonRow}><button type="button" className="button secondaryButton" onClick={copySelectedContent}>Copy</button><button type="button" className="button secondaryButton" onClick={pasteIntoSelected}>Paste</button></div>
+        <button type="button" className="button secondaryButton" onClick={duplicateSelectedBlock}>Duplicate</button>
+        <button type="button" className="button secondaryButton" disabled={selectedBlock.kind === "section"} onClick={deleteSelectedBlock}>Delete</button>
+      </div>
+    );
+  }
+
+  function renderImageEditor() {
+    if (!selectedBlock || selectedBlock.kind !== "image") return null;
+    return (
+      <div className={styles.editorBox}>
+        <h3>Image Tools</h3>
+        <label className="button secondaryButton">
+          {selectedBlock.imageUrl ? "Replace Image" : "Upload Image"}
+          <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event, selectedBlock.id)} />
+        </label>
+        {selectedBlock.imageUrl ? <button type="button" className="button secondaryButton" onClick={() => updateBlock(selectedBlock.id, { imageUrl: undefined, content: "Image placeholder. Upload, paste, or drag an image here." })}>Remove Image</button> : null}
+        <label className="fieldLabel"><span>Caption</span><textarea rows={3} value={selectedBlock.caption || ""} onChange={(event) => updateBlock(selectedBlock.id, { caption: event.target.value })} /></label>
+        <label className="fieldLabel"><span>Alt Text</span><textarea rows={3} value={selectedBlock.altText || ""} onChange={(event) => updateBlock(selectedBlock.id, { altText: event.target.value })} /></label>
+        <label className="fieldLabel"><span>Style</span><select value={selectedBlock.borderStyle || "none"} onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value as PosterBlock["borderStyle"] })}><option value="none">None</option><option value="rounded">Rounded</option><option value="shadow">Shadow</option><option value="frame">Frame</option></select></label>
+        <button type="button" className="button secondaryButton" onClick={duplicateSelectedBlock}>Duplicate Image</button>
+        <button type="button" className="button secondaryButton" onClick={deleteSelectedBlock}>Delete Image</button>
+      </div>
+    );
+  }
+
+  const startBlockDrag = (event: React.PointerEvent<HTMLElement>, block: PosterBlock) => {
+    const target = event.target as HTMLElement;
+
+    if (target.closest("button") || target.closest("input") || target.closest("textarea") || target.closest("select") || target.closest("label")) {
+      return;
+    }
+
+    event.preventDefault();
+    setSelectedHeaderField(null);
+    setSelectedBlockId(block.id);
+
+    if (block.kind === "image" || block.kind === "chart" || block.kind === "icon") {
+      setActiveSideTab("Visuals");
+    } else {
+      setActiveSideTab("Text");
+    }
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originalX = block.x;
+    const originalY = block.y;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const dx = (moveEvent.clientX - startX) / zoom;
+      const dy = (moveEvent.clientY - startY) / zoom;
+
+      updateBlock(block.id, {
+        x: Math.max(0, Math.round((originalX + dx) / 10) * 10),
+        y: Math.max(0, Math.round((originalY + dy) / 10) * 10),
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setSavedStatus("Unsaved changes");
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const renderBlockContent = (block: PosterBlock) => {
+    if (block.kind === "image") {
+      if (block.imageUrl) {
+        return <div className={styles.imageFrame}><img src={block.imageUrl} alt={block.altText || block.title} className={`${styles.posterImage} ${block.borderStyle ? styles[`image_${block.borderStyle}`] : ""}`} />{block.caption ? <small>{block.caption}</small> : null}</div>;
+      }
+      return (
+        <div className={styles.imageDrop} onDrop={(event) => handleImageDrop(event, block.id)} onDragOver={(event) => event.preventDefault()}>
+          <strong>Upload Image</strong>
+          <span>Choose, paste, or drag image here</span>
+          <label className="button secondaryButton">Choose Image<input type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event, block.id)} /></label>
+        </div>
+      );
+    }
+    if (block.kind === "chart") {
+      return <div className={styles.chartPreview}><strong>Imported Chart</strong><span>{block.content}</span><div className={styles.miniBars}><i /><i /><i /><i /></div></div>;
+    }
+    if (block.kind === "icon") {
+      return <div className={styles.iconPreview}><div>◆</div><span>{block.content}</span></div>;
+    }
+    if (block.kind === "divider") return <div className={styles.dividerLine} style={{ background: block.accent }} />;
+    return <p>{block.content}</p>;
+  };
+
+  const posterWidth = orientation === "landscape" ? 1400 : 980;
+  const posterHeight = orientation === "landscape" ? 2100 : 2400;
+
+  return (
+    <main className="page">
+      <section className={styles.topHeader}>
+        <div>
+          <div className={styles.kicker}>POLICY LAB STUDIO</div>
+          <h1>Poster Studio</h1>
+          <p>Professional conference poster builder.</p>
+          <span className={styles.saveStatus}>{savedStatus}{lastSavedAt ? ` · ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+        </div>
+        <div className={styles.headerActions}>
+          <Link href="/dashboard" className="button secondaryButton">Dashboard</Link>
+          <Link href="/implementation" className="button secondaryButton">Previous Studio</Link>
+          <Link href="/presentation" className="button secondaryButton">Next Studio</Link>
+          <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview"}</button>
+          <button type="button" className="button" onClick={() => window.print()}>Export</button>
+          <button type="button" className="button" onClick={() => savePoster(false)}>Save Progress</button>
+        </div>
+      </section>
+
+      <section className={`${styles.studioShell} ${isPreview ? styles.previewMode : ""}`}>
+        {!isPreview ? (
+          <nav className={styles.sideNav}>
+            {sideTabs.map(({ icon, label }) => (
+              <button key={label} type="button" title={label} className={`${styles.sideNavButton} ${activeSideTab === label ? styles.sideNavButtonActive : ""}`} onClick={() => setActiveSideTab(label)}>
+                <span className={styles.sideNavIcon}>{icon}</span>
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+        ) : null}
+
+        {!isPreview ? <aside className={styles.leftPanel}>{renderLeftPanel()}</aside> : null}
+
+        <section className={styles.workspacePanel}>
+          <div className={styles.workspaceHeader}>
             <div>
               <h2>Poster Workspace</h2>
-              <p className="fieldNote">
-                Select any block, edit it from the right panel, and save your poster.
-              </p>
+              <p>Select a block, edit from the left panel, and save progress.</p>
             </div>
           </div>
 
-          <div
-            ref={workspaceRef}
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: "auto",
-              background: "#eef2f7",
-              padding: 18,
-            }}
-          >
-            <div
-              style={{
-                width: 1500,
-                minHeight: 2250,
-                transform: `scale(${zoom})`,
-                transformOrigin: "top left",
-              }}
-            >
-              <div
-                style={{
-                  width: 1400,
-                  minHeight: 2100,
-                  background: "#ffffff",
-                  border: "1px solid #dbe2ef",
-                  boxShadow: "0 20px 50px rgba(15,47,102,.12)",
-                  padding: 18,
-                }}
-              >
-                <section
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #06265c 0%, #0f3f88 100%)",
-                    color: "#ffffff",
-                    borderRadius: 6,
-                    padding: 26,
-                    display: "grid",
-                    gridTemplateColumns: "120px 1fr 180px",
-                    alignItems: "center",
-                    gap: 18,
-                    marginBottom: 14,
-                    outline: selectedHeaderField
-                      ? "4px solid #f97316"
-                      : "none",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => scrollToHeader("title")}
-                >
-                  <div
-                    style={{
-                      width: 92,
-                      height: 92,
-                      borderRadius: "50%",
-                      border: "3px solid rgba(255,255,255,.8)",
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 42,
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      scrollToHeader("logo");
-                    }}
-                  >
-                    {posterHeader.logo}
-                  </div>
-
-                  <div>
-                    <h1
-                      style={{ color: "#ffffff", marginBottom: 6 }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        scrollToHeader("title");
-                      }}
-                    >
-                      {posterHeader.title}
-                    </h1>
-                    <p
-                      style={{ marginBottom: 0 }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        scrollToHeader("subtitle");
-                      }}
-                    >
-                      {posterHeader.subtitle}
-                    </p>
-                  </div>
-
-                  <div
-                    style={{ textAlign: "right", fontWeight: 700 }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      scrollToHeader("team");
-                    }}
-                  >
-                    {posterHeader.team}
-                    <br />
-                    {posterHeader.course}
-                    <br />
-                    {posterHeader.instructor}
-                  </div>
+          <div ref={workspaceRef} className={styles.workspaceScroll} onPaste={handleWorkspacePaste} onDrop={(event) => handleImageDrop(event)} onDragOver={(event) => event.preventDefault()}>
+            <div className={styles.zoomLayer} style={{ width: posterWidth + 100, minHeight: posterHeight + 100, transform: `scale(${zoom})` }}>
+              <div className={styles.posterPaper} style={{ width: posterWidth, minHeight: posterHeight, background: currentTheme.bg }}>
+                <section className={styles.posterHeader} style={{ background: `linear-gradient(135deg, ${currentTheme.primary} 0%, #0f3f88 100%)`, outline: selectedHeaderField ? `4px solid ${currentTheme.accent}` : "none" }} onClick={() => scrollToHeader("title")}>
+                  <div className={styles.logoCircle} onClick={(event) => { event.stopPropagation(); scrollToHeader("logo"); }}>{posterHeader.logo}</div>
+                  <div><h1>{posterHeader.title}</h1><p>{posterHeader.subtitle}</p></div>
+                  <div className={styles.headerMeta}>{posterHeader.team}<br />{posterHeader.course}<br />{posterHeader.instructor}</div>
                 </section>
 
-                <section
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    minHeight: 1650,
-                  }}
-                >
+                <section className={styles.posterBody}>
                   {blocks.map((block) => (
-                    <article
-                      key={block.id}
-                      onClick={() => {
-                        setSelectedHeaderField(null);
-                        setSelectedBlockId(block.id);
-                      }}
-                      style={{
-                        border:
-                          selectedBlockId === block.id && !selectedHeaderField
-                            ? `3px solid ${block.accent}`
-                            : "1px solid #d8e0ee",
-                        borderRadius: block.kind === "divider" ? 4 : 8,
-                        padding: block.kind === "divider" ? 10 : 14,
-                        position: "absolute",
-                        left: block.x,
-                        top: block.y,
-                        width: block.width,
-                        height: block.height,
-                        overflow: "hidden",
-                        background:
-                          block.kind === "callout"
-                            ? "#fff7ed"
-                            : block.kind === "divider"
-                            ? "#f8fafc"
-                            : "#ffffff",
-                        cursor: "pointer",
-                        transition: "all .15s ease",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: block.kind === "divider" ? 0 : 10,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: "50%",
-                            background: block.accent,
-                            color: "#ffffff",
-                            display: "grid",
-                            placeItems: "center",
-                            fontWeight: 900,
-                          }}
-                        >
-                          {block.number}
-                        </span>
-
-                        <strong style={{ color: "#0f2f66" }}>
-                          {block.title.toUpperCase()}
-                        </strong>
-                      </div>
-
-                      {block.kind === "image" ? (
-                        <div
-                          style={{
-                            border: "2px dashed #b8c7dc",
-                            height: "calc(100% - 52px)",
-                            display: "grid",
-                            placeItems: "center",
-                            textAlign: "center",
-                            padding: 10,
-                            color: "#334155",
-                          }}
-                        >
-                          {block.content}
-                        </div>
-                      ) : block.kind === "chart" ? (
-                        <div>
-                          <p style={{ marginBottom: 10 }}>{block.content}</p>
-                          <div
-                            style={{
-                              height: 70,
-                              display: "grid",
-                              gridTemplateColumns: "repeat(4, 1fr)",
-                              alignItems: "end",
-                              gap: 8,
-                            }}
-                          >
-                            {[40, 70, 50, 90].map((height, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  height,
-                                  background: block.accent,
-                                  borderRadius: 6,
-                                  opacity: 0.85,
-                                }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ) : block.kind === "icon" ? (
-                        <div
-                          style={{
-                            display: "grid",
-                            placeItems: "center",
-                            height: "calc(100% - 52px)",
-                            textAlign: "center",
-                          }}
-                        >
-                          <div style={{ fontSize: 44 }}>◆</div>
-                          <p style={{ marginBottom: 0 }}>{block.content}</p>
-                        </div>
-                      ) : block.kind === "divider" ? (
-                        <div
-                          style={{
-                            height: 5,
-                            background: block.accent,
-                            borderRadius: 999,
-                            marginTop: 8,
-                          }}
-                        />
-                      ) : (
-                        <p style={{ lineHeight: 1.55, marginBottom: 0 }}>
-                          {block.content}
-                        </p>
-                      )}
+                    <article key={block.id} className={styles.posterBlock} title="Drag to reposition" onPointerDown={(event) => startBlockDrag(event, block)} onClick={() => { setSelectedHeaderField(null); setSelectedBlockId(block.id); if (block.kind === "image") setActiveSideTab("Visuals"); else if (block.kind === "chart" || block.kind === "icon") setActiveSideTab("Visuals"); else setActiveSideTab("Text"); }} style={{ border: selectedBlockId === block.id && !selectedHeaderField ? `3px solid ${block.accent}` : "1px solid #d8e0ee", borderRadius: block.kind === "divider" ? 4 : 8, padding: block.kind === "divider" ? 10 : 14, left: block.x, top: block.y, width: block.width, height: block.height, background: block.kind === "callout" ? "#fff7ed" : block.kind === "divider" ? "#f8fafc" : "#ffffff" }}>
+                      <div className={styles.blockTitleRow}><span style={{ background: block.accent }}>{block.number}</span><strong>{block.title.toUpperCase()}</strong></div>
+                      {renderBlockContent(block)}
                     </article>
                   ))}
                 </section>
@@ -1023,345 +1127,15 @@ const generateLayouts = () => {
             </div>
           </div>
 
-          <div
-            style={{
-              padding: 10,
-              borderTop: "1px solid rgba(15,47,102,0.12)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-              background: "#ffffff",
-            }}
-          >
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() => setZoom((prev) => Math.max(0.35, prev - 0.08))}
-            >
-              −
-            </button>
-
-            <span
-              className="panelHint"
-              style={{ padding: "8px 12px", fontWeight: 800 }}
-            >
-              {Math.round(zoom * 100)}%
-            </span>
-
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() => setZoom((prev) => Math.min(1.2, prev + 0.08))}
-            >
-              +
-            </button>
-
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() => setZoom(0.58)}
-            >
-              Fit
-            </button>
-
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={() => setZoom(1)}
-            >
-              100%
-            </button>
-
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={resetPosterLayout}
-            >
-              Reset Layout
-            </button>
+          <div className={styles.zoomControls}>
+            <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.max(0.35, prev - 0.08))}>−</button>
+            <span>{Math.round(zoom * 100)}%</span>
+            <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.min(1.2, prev + 0.08))}>+</button>
+            <button type="button" className="button secondaryButton" onClick={() => setZoom(0.58)}>Fit</button>
+            <button type="button" className="button secondaryButton" onClick={() => setZoom(1)}>100%</button>
+            <button type="button" className="button secondaryButton" onClick={resetPosterLayout}>Reset Layout</button>
           </div>
         </section>
-
-        <aside
-          className="panelCard"
-          style={{
-            height: "760px",
-            overflowY: "auto",
-            overflowX: "hidden",
-            padding: 16,
-            display: "grid",
-            gap: 14,
-            alignContent: "start",
-          }}
-        >
-          <div className="panelHeader">
-            <h2>AI Assistant</h2>
-            <p className="fieldNote">Generate layouts and review poster.</p>
-          </div>
-
-          <div className="panelHint">
-            <strong>AI Poster Generator</strong>
-            <p className="fieldNote">
-              Describe your poster and get 3–4 layout suggestions.
-            </p>
-
-            <textarea
-              rows={5}
-              value={aiPrompt}
-              onChange={(event) => setAiPrompt(event.target.value)}
-              placeholder="e.g. Clean layout with icons, evidence at top, timeline at bottom..."
-            />
-
-            <button
-              type="button"
-              className="button"
-              onClick={generateLayouts}
-              style={{ marginTop: 10, width: "100%" }}
-            >
-              Generate Layouts
-            </button>
-          </div>
-
-          <div className="panelHint">
-            <strong>Suggested Layouts</strong>
-
-            {layoutSuggestions.length === 0 ? (
-              <p className="fieldNote" style={{ marginBottom: 0 }}>
-                Layout suggestions will appear here.
-              </p>
-            ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-  {layoutSuggestions.map((layout, index) => {
-    const layoutType =
-      index === 0
-        ? "academic"
-        : index === 1
-        ? "story"
-        : "dashboard";
-
-    return (
-      <div key={layout} className="panelHint">
-        <strong>{layout}</strong>
-
-        <p
-          className="fieldNote"
-          style={{ marginBottom: 10 }}
-        >
-          Click below to rearrange your poster using this layout.
-        </p>
-
-        <button
-          type="button"
-          className="button secondaryButton"
-          style={{ width: "100%" }}
-          onClick={() =>
-            applyPosterLayout(
-              layoutType as "academic" | "story" | "dashboard"
-            )
-          }
-        >
-          Apply Layout
-        </button>
-      </div>
-    );
-  })}
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            className="button secondaryButton"
-            onClick={reviewPoster}
-          >
-            Review My Poster
-          </button>
-
-          {reviewText ? (
-            <div className="panelHint">
-              <strong>AI Poster Review</strong>
-              <p className="fieldNote" style={{ marginBottom: 0 }}>
-                {reviewText}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="panelHint">
-            <strong>
-              {selectedHeaderField ? "Header Editor" : "Element Editor"}
-            </strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {selectedHeaderField
-                ? `Editing: ${selectedHeaderField}`
-                : selectedBlock?.title}
-            </p>
-          </div>
-
-          {selectedHeaderField ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              <label className="fieldLabel">
-                <span>Logo / Icon</span>
-                <input
-                  value={posterHeader.logo}
-                  onChange={(event) => updateHeader({ logo: event.target.value })}
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Poster Title</span>
-                <textarea
-                  rows={3}
-                  value={posterHeader.title}
-                  onChange={(event) =>
-                    updateHeader({ title: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Subtitle</span>
-                <textarea
-                  rows={4}
-                  value={posterHeader.subtitle}
-                  onChange={(event) =>
-                    updateHeader({ subtitle: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Team</span>
-                <input
-                  value={posterHeader.team}
-                  onChange={(event) => updateHeader({ team: event.target.value })}
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Course</span>
-                <input
-                  value={posterHeader.course}
-                  onChange={(event) =>
-                    updateHeader({ course: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Instructor</span>
-                <input
-                  value={posterHeader.instructor}
-                  onChange={(event) =>
-                    updateHeader({ instructor: event.target.value })
-                  }
-                />
-              </label>
-            </div>
-          ) : selectedBlock ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              <label className="fieldLabel">
-                <span>Title</span>
-                <input
-                  value={selectedBlock.title}
-                  onChange={(event) =>
-                    updateBlock(selectedBlock.id, { title: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Type / Caption</span>
-                <input
-                  value={selectedBlock.type}
-                  onChange={(event) =>
-                    updateBlock(selectedBlock.id, { type: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className="fieldLabel">
-                <span>Content</span>
-                <textarea
-                  rows={8}
-                  value={selectedBlock.content}
-                  onChange={(event) =>
-                    updateBlock(selectedBlock.id, {
-                      content: event.target.value,
-                    })
-                  }
-                />
-              </label>
-
-              <button
-                type="button"
-                className="button secondaryButton"
-                onClick={duplicateSelectedBlock}
-              >
-                Duplicate Element
-              </button>
-
-              <button
-                type="button"
-                className="button secondaryButton"
-                onClick={deleteSelectedBlock}
-                disabled={selectedBlock.kind === "section"}
-              >
-                Delete Visual Element
-              </button>
-            </div>
-          ) : null}
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 8,
-            }}
-          >
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={copySelectedContent}
-            >
-              Copy
-            </button>
-
-            <button
-              type="button"
-              className="button secondaryButton"
-              onClick={pasteIntoSelected}
-            >
-              Paste
-            </button>
-          </div>
-
-          <div className="panelHint">
-            <strong>Poster Progress</strong>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              {completedCount}/{blocks.length} sections/elements completed
-            </p>
-          </div>
-
-          {savedStatus ? (
-            <div className="savedBanner" style={{ marginTop: 0 }}>
-              {savedStatus}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            className="button secondaryButton"
-            onClick={importFromStudios}
-          >
-            Import from Studios
-          </button>
-
-          <button type="button" className="button" onClick={savePoster}>
-            Save Poster
-          </button>
-        </aside>
       </section>
     </main>
   );

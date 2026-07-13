@@ -1,848 +1,677 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import styles from "./presentation.module.css";
+import {
+  buildPosterContent,
+  readAllStudioObjects,
+} from "@/components/ProjectState/projectService";
 
-type TeamMember = { name: string; role?: string };
-type Team = {
-  groupNumber?: number;
-  groupName?: string;
-  courseName?: string;
-  instructorName?: string;
-  students?: TeamMember[];
+type PosterBlock = {
+  id: string;
+  title: string;
+  type?: string;
+  content: string;
+  kind?: string;
+  imageUrl?: string;
+  caption?: string;
+};
+
+type PosterHeader = {
+  title: string;
+  subtitle: string;
+  logo: string;
+  team: string;
+  course: string;
+  instructor: string;
+};
+
+type ExportItem = {
+  id: string;
+  label: string;
+  source: string;
+  content: string;
+  selected: boolean;
 };
 
 type PitchSection = {
   id: string;
   title: string;
-  source: string;
-  sourceContent: string;
-  suggestedPoints: string[];
+  content: string;
   script: string;
-  speaker: string;
-  timing: string;
-  complete: boolean;
+  selected: boolean;
+  open: boolean;
 };
 
 type JudgeQuestion = {
   id: string;
-  difficulty: "Basic" | "Intermediate" | "Challenging" | "Professor-level";
-  theme: string;
   question: string;
   answer: string;
-  feedback: string;
+  open: boolean;
 };
 
-type ChecklistItem = {
-  id: string;
-  label: string;
-  checked: boolean;
+type SavedPoster = {
+  posterHeader?: PosterHeader;
+  blocks?: PosterBlock[];
 };
 
-const now = () => new Date().toISOString();
+const PRESENTATION_STORAGE_KEY = "plstudio_presentation_v2";
+const POSTER_STORAGE_KEYS = ["plstudio_poster_v2", "plstudio_poster_v1"];
 
-const defaultPitchSections: PitchSection[] = [
-  {
-    id: "opening",
-    title: "Opening",
-    source: "Poster Studio",
-    sourceContent:
-      "Introduce the project title, team, policy challenge, and why the topic matters.",
-    suggestedPoints: [
-      "Start with a clear opening sentence.",
-      "Name the policy issue.",
-      "Explain why the audience should care.",
-    ],
-    script: "",
-    speaker: "",
-    timing: "20 seconds",
-    complete: false,
-  },
-  {
-    id: "problem",
-    title: "Problem & Evidence",
-    source: "Problem & Evidence Studio",
-    sourceContent:
-      "Problem statement, evidence summary, affected population, root causes, assumptions, and HMW question.",
-    suggestedPoints: [
-      "What is the problem?",
-      "Who is affected?",
-      "What evidence supports the problem?",
-      "What is the key gap or need?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "45 seconds",
-    complete: false,
-  },
-  {
-    id: "process",
-    title: "Stakeholders & Process",
-    source: "Process Studio",
-    sourceContent:
-      "Stakeholder map, power-interest analysis, participation approach, system relationships, and opportunity areas.",
-    suggestedPoints: [
-      "Who are the main stakeholders?",
-      "Who has power and who is affected?",
-      "How did the process shape the solution?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "35 seconds",
-    complete: false,
-  },
-  {
-    id: "solution",
-    title: "Proposed Solution",
-    source: "Solution Studio",
-    sourceContent:
-      "Selected intervention, solution options, beneficiaries, theory of change, and expected outcomes.",
-    suggestedPoints: [
-      "What solution are you proposing?",
-      "Why this solution instead of another option?",
-      "How does it respond to the problem?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "45 seconds",
-    complete: false,
-  },
-  {
-    id: "implementation",
-    title: "Implementation Plan",
-    source: "Implementation Studio",
-    sourceContent:
-      "Governance, delivery roles, activities, partners, timeline, budget, resources, and implementation pathway.",
-    suggestedPoints: [
-      "Who will lead implementation?",
-      "What are the main activities?",
-      "What is the timeline?",
-      "What resources are needed?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "50 seconds",
-    complete: false,
-  },
-  {
-    id: "risks",
-    title: "Risks & Mitigation",
-    source: "Implementation Studio",
-    sourceContent:
-      "Risk register, likelihood, impact, mitigation strategies, contingency planning, and escalation actions.",
-    suggestedPoints: [
-      "What are the most important risks?",
-      "How will you reduce or manage them?",
-      "What is your contingency plan?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "35 seconds",
-    complete: false,
-  },
-  {
-    id: "monitoring",
-    title: "Monitoring & Impact",
-    source: "Solution + Implementation Studios",
-    sourceContent:
-      "Indicators, baseline, targets, data sources, monitoring plan, expected outcomes, and impact measures.",
-    suggestedPoints: [
-      "How will success be measured?",
-      "What indicators matter most?",
-      "What impact do you expect?",
-    ],
-    script: "",
-    speaker: "",
-    timing: "35 seconds",
-    complete: false,
-  },
-  {
-    id: "closing",
-    title: "Closing Message",
-    source: "Poster Studio",
-    sourceContent:
-      "Final recommendation, value proposition, and closing statement for judges or professors.",
-    suggestedPoints: [
-      "End with a clear recommendation.",
-      "Mention why the policy is feasible.",
-      "Close confidently.",
-    ],
-    script: "",
-    speaker: "",
-    timing: "20 seconds",
-    complete: false,
-  },
+const defaultPosterHeader: PosterHeader = {
+  title: "Policy Poster Presentation",
+  subtitle: "Prepare a clear presentation from your final poster.",
+  logo: "🎤",
+  team: "Team Name",
+  course: "Course / Policy Lab",
+  instructor: "Instructor",
+};
+
+const defaultQuestions = [
+  "What specific policy problem is your poster addressing?",
+  "Who is most affected by this problem, and why did you prioritize them?",
+  "What is the strongest evidence supporting your problem statement?",
+  "How does your proposed solution respond directly to the root causes?",
+  "Which stakeholders are most important for implementation?",
+  "What risks could affect implementation, and how would you manage them?",
+  "What indicators would show that this policy is working?",
+  "What resources, funding, or institutional support would be required?",
+  "How would this policy be sustained beyond the initial implementation phase?",
+  "What is the main limitation of your proposal, and how would you address it?",
 ];
 
-const defaultQuestions: JudgeQuestion[] = [
-  {
-    id: "q1",
-    difficulty: "Basic",
-    theme: "Problem framing",
-    question: "Why did you choose this policy problem, and why is it important now?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q2",
-    difficulty: "Basic",
-    theme: "Evidence",
-    question: "What is the strongest evidence supporting your problem statement?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q3",
-    difficulty: "Intermediate",
-    theme: "Solution choice",
-    question: "Why did you choose this intervention instead of other possible policy options?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q4",
-    difficulty: "Intermediate",
-    theme: "Stakeholders",
-    question: "Which stakeholder may resist this policy, and how would you engage them?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q5",
-    difficulty: "Intermediate",
-    theme: "Implementation",
-    question: "Who will lead implementation, and what makes the delivery plan realistic?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q6",
-    difficulty: "Challenging",
-    theme: "Budget",
-    question: "How do you justify the budget, and what would you cut if funding was reduced?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q7",
-    difficulty: "Challenging",
-    theme: "Risk and mitigation",
-    question: "What is the biggest implementation risk, and what is your mitigation strategy?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q8",
-    difficulty: "Challenging",
-    theme: "Monitoring",
-    question: "How will you know whether your policy is working after implementation?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q9",
-    difficulty: "Professor-level",
-    theme: "Theory of change",
-    question: "What assumptions must hold true for your theory of change to be realistic?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q10",
-    difficulty: "Professor-level",
-    theme: "Sustainability",
-    question: "How will this policy continue after the first phase or initial funding ends?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q11",
-    difficulty: "Professor-level",
-    theme: "Equity",
-    question: "Who could be unintentionally excluded or harmed by your proposed solution?",
-    answer: "",
-    feedback: "",
-  },
-  {
-    id: "q12",
-    difficulty: "Professor-level",
-    theme: "Policy defense",
-    question: "If judges disagree with your solution, what is your strongest defense?",
-    answer: "",
-    feedback: "",
-  },
-];
+const readSavedPoster = (): SavedPoster => {
+  for (const key of POSTER_STORAGE_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
 
-const defaultChecklist: ChecklistItem[] = [
-  { id: "poster", label: "Poster is complete and reviewed", checked: false },
-  { id: "problem", label: "Problem and evidence can be explained clearly", checked: false },
-  { id: "stakeholders", label: "Stakeholders and power dynamics are ready to discuss", checked: false },
-  { id: "solution", label: "Solution choice can be defended", checked: false },
-  { id: "implementation", label: "Implementation plan is realistic", checked: false },
-  { id: "budget", label: "Budget and funding explanation is prepared", checked: false },
-  { id: "risks", label: "Risks and mitigation are ready", checked: false },
-  { id: "monitoring", label: "Monitoring and success indicators are clear", checked: false },
-  { id: "speakers", label: "Speaker roles and timing are assigned", checked: false },
-  { id: "qa", label: "Judges Q&A has been practiced", checked: false },
-];
-
-export default function PresentationStudio() {
-  const [team, setTeam] = useState<Team | null>(null);
-  const [editor, setEditor] = useState("");
-  const [saved, setSaved] = useState("");
-  const [currentTab, setCurrentTab] = useState<"presentation" | "questions" | "readiness">("presentation");
-  const [pitchSections, setPitchSections] = useState<PitchSection[]>(defaultPitchSections);
-  const [questions, setQuestions] = useState<JudgeQuestion[]>(defaultQuestions);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(defaultChecklist);
-  const [coachMessage, setCoachMessage] = useState("");
-
-  useEffect(() => {
     try {
-      const rawTeam = localStorage.getItem("plstudio_team");
-      if (rawTeam) {
-        const parsed = JSON.parse(rawTeam);
-        setTeam(parsed);
-        setEditor(parsed.students?.[0]?.name || parsed.instructorName || "");
-      }
-
-      const raw = localStorage.getItem("plstudio_presentation_v1");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (Array.isArray(data.pitchSections)) setPitchSections(data.pitchSections);
-        if (Array.isArray(data.questions)) setQuestions(data.questions);
-        if (Array.isArray(data.checklist)) setChecklist(data.checklist);
-      }
-    } catch (error) {
-      console.error(error);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.blocks)) return parsed;
+    } catch {
+      continue;
     }
-  }, []);
+  }
 
-  const members = useMemo(() => {
-    const list = [
-      ...(team?.students ?? []),
-      ...(team?.instructorName ? [{ name: team.instructorName, role: "Professor" }] : []),
-    ];
+  return {};
+};
 
-    return list.filter(
-      (member, index, arr) =>
-        member.name && index === arr.findIndex((item) => item.name === member.name)
-    );
-  }, [team]);
+const cleanText = (value: string) => value.replace(/\s+/g, " ").trim();
 
-  const completedPitch = pitchSections.filter((section) => section.complete).length;
-  const answeredQuestions = questions.filter((question) => question.answer.trim()).length;
-  const readyItems = checklist.filter((item) => item.checked).length;
-  const readinessScore = Math.round(
-    ((completedPitch / pitchSections.length) * 40) +
-      ((answeredQuestions / questions.length) * 30) +
-      ((readyItems / checklist.length) * 30)
+const buildDefaultScript = (title: string, content: string) => {
+  const cleanContent = cleanText(content);
+
+  if (!cleanContent) {
+    return `In this section, I will briefly explain the key point related to ${title.toLowerCase()}.`;
+  }
+
+  return `For ${title.toLowerCase()}, our poster highlights that ${cleanContent}`;
+};
+
+export default function PresentationStudioPage() {
+  const [posterHeader, setPosterHeader] =
+    useState<PosterHeader>(defaultPosterHeader);
+  const [exportItems, setExportItems] = useState<ExportItem[]>([]);
+  const [pitchSections, setPitchSections] = useState<PitchSection[]>([]);
+  const [questions, setQuestions] = useState<JudgeQuestion[]>([]);
+  const [activeSection, setActiveSection] = useState<
+    "export" | "script" | "qa" | null
+  >("export");
+  const [lastSaved, setLastSaved] = useState("Not saved yet");
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const selectedExportCount = useMemo(
+    () => exportItems.filter((item) => item.selected).length,
+    [exportItems]
   );
 
-  const saveProgress = () => {
-    localStorage.setItem(
-      "plstudio_presentation_v1",
-      JSON.stringify({
-        pitchSections,
-        questions,
-        checklist,
-        savedBy: editor,
-        savedAt: now(),
+  const selectedPitchCount = useMemo(
+    () => pitchSections.filter((section) => section.selected).length,
+    [pitchSections]
+  );
+
+  useEffect(() => {
+    const saved = localStorage.getItem(PRESENTATION_STORAGE_KEY);
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setPosterHeader(parsed.posterHeader || defaultPosterHeader);
+        setExportItems(parsed.exportItems || []);
+        setPitchSections(parsed.pitchSections || []);
+        setQuestions(parsed.questions || []);
+        setLastSaved(parsed.lastSaved || "Loaded saved work");
+        return;
+      } catch {
+        localStorage.removeItem(PRESENTATION_STORAGE_KEY);
+      }
+    }
+
+    importFromPoster();
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      saveProgress("Auto-saved");
+    }, 45000);
+
+    return () => clearInterval(timer);
+  });
+
+  const importFromPoster = () => {
+    const savedPoster = readSavedPoster();
+    const studioObjects = readAllStudioObjects();
+    const fallbackContent = buildPosterContent(studioObjects);
+
+    const header = savedPoster.posterHeader || defaultPosterHeader;
+    const posterBlocks = Array.isArray(savedPoster.blocks)
+      ? savedPoster.blocks
+      : [];
+
+    const sectionBlocks: PosterBlock[] =
+      posterBlocks.length > 0
+        ? posterBlocks
+        : [
+            {
+              id: "problem",
+              title: "Problem",
+              content: fallbackContent.problem || "",
+              kind: "section",
+            },
+            {
+              id: "evidence",
+              title: "Evidence",
+              content: fallbackContent.evidence || "",
+              kind: "section",
+            },
+            {
+              id: "stakeholders",
+              title: "Stakeholders",
+              content: fallbackContent.stakeholders || "",
+              kind: "section",
+            },
+            {
+              id: "population",
+              title: "Target Population / Journey",
+              content: fallbackContent.population || "",
+              kind: "section",
+            },
+            {
+              id: "solution",
+              title: "Solution",
+              content: fallbackContent.solution || "",
+              kind: "section",
+            },
+            {
+              id: "implementation",
+              title: "Implementation",
+              content: fallbackContent.implementation || "",
+              kind: "section",
+            },
+            {
+              id: "risks",
+              title: "Risks",
+              content: fallbackContent.risks || "",
+              kind: "section",
+            },
+            {
+              id: "indicators",
+              title: "Indicators",
+              content: fallbackContent.indicators || "",
+              kind: "section",
+            },
+          ];
+
+    const exportList: ExportItem[] = [
+      {
+        id: "poster-title",
+        label: header.title || "Poster Title",
+        source: "Final Poster Header",
+        content: header.subtitle || "",
+        selected: true,
+      },
+      ...sectionBlocks.map((block) => ({
+        id: block.id,
+        label: block.title,
+        source:
+          block.kind === "image"
+            ? "Poster Image"
+            : block.kind === "chart"
+            ? "Poster Chart"
+            : block.kind === "icon"
+            ? "Poster Icon"
+            : "Final Poster Section",
+        content:
+          block.kind === "image"
+            ? block.caption || block.content || "Image included in poster."
+            : block.content || "",
+        selected: true,
+      })),
+    ];
+
+    const pitchList: PitchSection[] = [
+      {
+        id: "opening",
+        title: "Opening",
+        content: header.subtitle || "",
+        script: `Good morning. Our presentation is based on our poster titled "${header.title}". We will briefly explain the policy problem, evidence, solution, implementation plan, and expected impact.`,
+        selected: true,
+        open: true,
+      },
+      ...sectionBlocks.map((block) => ({
+        id: block.id,
+        title: block.title,
+        content: block.content || "",
+        script: buildDefaultScript(block.title, block.content || ""),
+        selected: true,
+        open: false,
+      })),
+      {
+        id: "closing",
+        title: "Closing",
+        content: "",
+        script:
+          "To conclude, our proposal is evidence-informed, implementation-focused, and designed to support better policy outcomes. Thank you.",
+        selected: true,
+        open: false,
+      },
+    ];
+
+    const questionList: JudgeQuestion[] = defaultQuestions.map(
+      (question, index) => ({
+        id: `q${index + 1}`,
+        question,
+        answer: "",
+        open: false,
       })
     );
 
-    setSaved("Progress saved.");
-    setTimeout(() => setSaved(""), 2000);
+    setPosterHeader(header);
+    setExportItems(exportList);
+    setPitchSections(pitchList);
+    setQuestions(questionList);
+    setStatusMessage("Imported latest saved poster content.");
   };
 
-  const updatePitchSection = (
-    id: string,
-    key: keyof PitchSection,
-    value: string | boolean
-  ) => {
+  const saveProgress = (message = "Saved") => {
+    const savedAt = new Date().toLocaleTimeString();
+
+    localStorage.setItem(
+      PRESENTATION_STORAGE_KEY,
+      JSON.stringify({
+        posterHeader,
+        exportItems,
+        pitchSections,
+        questions,
+        lastSaved: `${message} at ${savedAt}`,
+      })
+    );
+
+    setLastSaved(`${message} at ${savedAt}`);
+    setStatusMessage(`${message} successfully.`);
+  };
+
+  const toggleMainSection = (section: "export" | "script" | "qa") => {
+    setActiveSection((current) => (current === section ? null : section));
+  };
+
+  const toggleExportItem = (id: string) => {
+    setExportItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const togglePitchSelection = (id: string) => {
     setPitchSections((prev) =>
       prev.map((section) =>
-        section.id === id ? { ...section, [key]: value } : section
+        section.id === id
+          ? { ...section, selected: !section.selected }
+          : section
       )
     );
   };
 
-  const updateQuestion = (
-    id: string,
-    key: keyof JudgeQuestion,
-    value: string
-  ) => {
+  const togglePitchOpen = (id: string) => {
+    setPitchSections((prev) =>
+      prev.map((section) =>
+        section.id === id ? { ...section, open: !section.open } : section
+      )
+    );
+  };
+
+  const updatePitch = (id: string, script: string) => {
+    setPitchSections((prev) =>
+      prev.map((section) =>
+        section.id === id ? { ...section, script } : section
+      )
+    );
+  };
+
+  const toggleQuestionOpen = (id: string) => {
     setQuestions((prev) =>
       prev.map((question) =>
-        question.id === id ? { ...question, [key]: value } : question
+        question.id === id
+          ? { ...question, open: !question.open }
+          : question
       )
     );
   };
 
-  const toggleChecklist = (id: string) => {
-    setChecklist((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, checked: !item.checked } : item
+  const updateAnswer = (id: string, answer: string) => {
+    setQuestions((prev) =>
+      prev.map((question) =>
+        question.id === id ? { ...question, answer } : question
       )
     );
   };
 
-  const runPresentationCoach = () => {
-    const incomplete = pitchSections.filter((section) => !section.complete);
-    if (incomplete.length > 0) {
-      setCoachMessage(
-        `AI Presentation Coach: ${incomplete.length} presentation section(s) are not marked complete. Start with ${incomplete[0].title}. Check that the script is clear, short, and linked to the poster.`
-      );
-      return;
-    }
+  const preparePowerPointExport = () => {
+    const slides = exportItems
+      .filter((item) => item.selected)
+      .map(
+        (item) => `
+          <section>
+            <h1>${item.label}</h1>
+            <p><strong>Source:</strong> ${item.source}</p>
+            <p>${item.content || "Add slide content here."}</p>
+          </section>
+        `
+      )
+      .join("");
 
-    if (answeredQuestions < 5) {
-      setCoachMessage(
-        "AI Presentation Coach: The pitch flow is complete, but judges Q&A practice is still limited. Practice at least five questions before presenting."
-      );
-      return;
-    }
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Arial, sans-serif; color: #0f2f66; }
+            section { page-break-after: always; padding: 48px; }
+            h1 { color: #0f2f66; font-size: 34px; }
+            p { font-size: 20px; line-height: 1.5; }
+          </style>
+        </head>
+        <body>${slides}</body>
+      </html>
+    `;
 
-    setCoachMessage(
-      "AI Presentation Coach: Your presentation structure looks ready. Now rehearse timing, transitions between speakers, and your strongest answer for budget, risk, and sustainability questions."
-    );
-  };
+    const blob = new Blob([html], {
+      type: "application/vnd.ms-powerpoint",
+    });
 
-  const generateFeedback = (question: JudgeQuestion) => {
-    if (!question.answer.trim()) {
-      updateQuestion(
-        question.id,
-        "feedback",
-        "Write a short answer first. A strong response should include evidence, a clear policy reason, and one limitation or mitigation."
-      );
-      return;
-    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "policy-lab-presentation.ppt";
+    a.click();
+    URL.revokeObjectURL(url);
 
-    updateQuestion(
-      question.id,
-      "feedback",
-      "AI feedback placeholder: Good start. Strengthen this answer by linking it to evidence from your poster, naming the relevant stakeholder, and explaining the implementation implication."
-    );
+    setStatusMessage("Presentation export prepared.");
   };
 
   return (
     <main className="page">
-      <section
-        className="panelCard"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 0.8fr)",
-          gap: 24,
-          alignItems: "center",
-          padding: 28,
-          marginBottom: 22,
-        }}
-      >
-        <div>
-          <h1 style={{ marginBottom: 8 }}>Presentation Studio</h1>
+      <section className={styles.hero}>
+        <div className={styles.heroText}>
+          <div className={styles.kicker}>POLICY LAB STUDIO</div>
 
-          <h2
-            style={{
-              fontSize: "1.6rem",
-              fontWeight: 600,
-              color: "#42526b",
-              marginBottom: 14,
-              lineHeight: 1.25,
-            }}
+          <h1 className={styles.pageTitle}>Presentation Studio</h1>
+
+          <p className={styles.subtitle}>
+            Prepare your PowerPoint presentation, pitch script, and judges’
+            Q&amp;A from your completed poster.
+          </p>
+
+          <p className={styles.savedText}>{lastSaved}</p>
+        </div>
+
+        <div className={styles.headerActions}>
+          <Link href="/" className="button secondaryButton">
+            Home
+          </Link>
+
+          <Link href="/dashboard" className="button secondaryButton">
+            Dashboard
+          </Link>
+
+          <Link href="/poster" className="button secondaryButton">
+            Previous Studio
+          </Link>
+
+<Link href="/portfolio" className="button secondaryButton">
+  Next Studio
+</Link>
+
+          <button
+            type="button"
+            className="button secondaryButton"
+            onClick={importFromPoster}
           >
-            Prepare your pitch and defend your policy project
-          </h2>
+            Import Latest Poster
+          </button>
 
-          <p className="hero-subtitle" style={{ marginBottom: 10 }}>
-            Use your completed studio work as a presentation flow, assign speakers, rehearse timing,
-            and practice likely judges' questions.
-          </p>
+          <button
+            type="button"
+            className="button secondaryButton"
+            onClick={() => saveProgress()}
+          >
+            Save Progress
+          </button>
 
-          <p style={{ maxWidth: 820, marginBottom: 0 }}>
-            This studio helps students move from a completed poster to a clear, evidence-informed presentation
-            with strong answers for professor, peer, and judge feedback.
-          </p>
-        </div>
-
-        <div className="panelHint" style={{ display: "grid", gap: 12 }}>
-          <div className="fieldLabel" style={{ marginBottom: 0 }}>
-            <label>Who is currently editing?</label>
-            <select value={editor} onChange={(event) => setEditor(event.target.value)}>
-              <option value="">Select editor</option>
-              {members.map((member) => (
-                <option key={member.name} value={member.name}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="actionRow" style={{ justifyContent: "flex-start", gap: 10, flexWrap: "wrap" }}>
-            <Link className="button secondaryButton" href="/portfolio">
-              Previous Studio
-            </Link>
-
-            <Link className="button secondaryButton" href="/dashboard">
-              Back to Dashboard
-            </Link>
-
-            <button type="button" className="button" onClick={saveProgress}>
-              Save Progress
-            </button>
-          </div>
-
-          {saved ? <div className="savedBanner" style={{ marginTop: 0 }}>{saved}</div> : null}
+          <button type="button" className="button" onClick={preparePowerPointExport}>
+            Export as PPT
+          </button>
         </div>
       </section>
 
-      <section className="panelCard" style={{ marginBottom: 22 }}>
-        <div className="panelHeader">
-          <h3>Final Readiness Score</h3>
-          <p className="fieldNote">
-            Based on presentation sections, Q&A practice, and checklist completion.
-          </p>
-        </div>
-
-        <div style={{ height: 12, borderRadius: 999, background: "rgba(15, 23, 42, 0.08)" }}>
-          <div
-            style={{
-              width: `${readinessScore}%`,
-              height: "100%",
-              borderRadius: 999,
-              background: "#0f2f66",
-            }}
-          />
-        </div>
-
-        <p className="fieldNote" style={{ marginTop: 10, marginBottom: 0 }}>
-          {readinessScore}% ready · {completedPitch}/{pitchSections.length} presentation sections complete · {answeredQuestions}/{questions.length} questions practiced
-        </p>
-      </section>
-
-      <div className="stepper" style={{ marginBottom: 18 }}>
-        <button
-          type="button"
-          className={currentTab === "presentation" ? "stepButton active" : "stepButton"}
-          onClick={() => setCurrentTab("presentation")}
-        >
-          1. Presentation Flow
-        </button>
-
-        <button
-          type="button"
-          className={currentTab === "questions" ? "stepButton active" : "stepButton"}
-          onClick={() => setCurrentTab("questions")}
-        >
-          2. Judges Q&A
-        </button>
-
-        <button
-          type="button"
-          className={currentTab === "readiness" ? "stepButton active" : "stepButton"}
-          onClick={() => setCurrentTab("readiness")}
-        >
-          3. Final Readiness
-        </button>
-      </div>
-
-      {currentTab === "presentation" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 340px",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          <section className="panelCard">
-            <div className="panelHeader">
-              <h2>Presentation Flow from Studio Work</h2>
-              <p className="fieldNote">
-                Each section uses content from previous studios as the basis for the pitch.
-              </p>
-            </div>
-
-            <div style={{ display: "grid", gap: 16 }}>
-              {pitchSections.map((section, index) => (
-                <div key={section.id} className="panelCard">
-                  <div className="panelHeader">
-                    <div>
-                      <h3 style={{ marginBottom: 4 }}>
-                        {index + 1}. {section.title}
-                      </h3>
-                      <p className="fieldNote" style={{ marginBottom: 0 }}>
-                        Source: {section.source}
-                      </p>
-                    </div>
-
-                    <label className="fieldNote" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={section.complete}
-                        onChange={() => updatePitchSection(section.id, "complete", !section.complete)}
-                        style={{ width: "auto" }}
-                      />
-                      Ready
-                    </label>
-                  </div>
-
-                  <div className="panelHint">
-                    <strong>Source content from previous studios</strong>
-                    <p className="fieldNote" style={{ marginBottom: 0 }}>
-                      {section.sourceContent}
-                    </p>
-                  </div>
-
-                  <div className="panelHint">
-                    <strong>Suggested speaking points</strong>
-                    <ul style={{ marginBottom: 0 }}>
-                      {section.suggestedPoints.map((point) => (
-                        <li key={point}>{point}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="fieldLabel">
-                    <label>Student-edited speaking script</label>
-                    <textarea
-                      rows={4}
-                      value={section.script}
-                      onChange={(event) =>
-                        updatePitchSection(section.id, "script", event.target.value)
-                      }
-                      placeholder="Write the exact words or bullet points your speaker will use..."
-                    />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) minmax(160px, 0.5fr)",
-                      gap: 12,
-                    }}
-                  >
-                    <div className="fieldLabel">
-                      <label>Speaker</label>
-                      <select
-                        value={section.speaker}
-                        onChange={(event) =>
-                          updatePitchSection(section.id, "speaker", event.target.value)
-                        }
-                      >
-                        <option value="">Assign speaker</option>
-                        {members.map((member) => (
-                          <option key={member.name} value={member.name}>
-                            {member.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="fieldLabel">
-                      <label>Timing</label>
-                      <input
-                        value={section.timing}
-                        onChange={(event) =>
-                          updatePitchSection(section.id, "timing", event.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <aside style={{ display: "grid", gap: 16 }}>
-            <SidebarPanel title="AI Presentation Coach">
-              <p className="fieldNote">
-                The coach checks flow, missing sections, timing, weak transitions, and Q&A readiness.
-              </p>
-
-              <button type="button" className="button" onClick={runPresentationCoach}>
-                Run Presentation Coach
-              </button>
-
-              {coachMessage ? <div className="panelHint">{coachMessage}</div> : null}
-            </SidebarPanel>
-
-            <SidebarPanel title="Presentation Tips">
-              <Tip text="Start with the problem, not the solution." />
-              <Tip text="Use evidence briefly; do not overload the audience." />
-              <Tip text="Explain why your solution is feasible." />
-              <Tip text="Prepare one strong sentence on budget, risk, and sustainability." />
-              <Tip text="End with a clear policy recommendation." />
-            </SidebarPanel>
-          </aside>
-        </div>
+      {statusMessage ? (
+        <div className={styles.statusBanner}>{statusMessage}</div>
       ) : null}
 
-      {currentTab === "questions" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 340px",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          <section className="panelCard">
-            <div className="panelHeader">
-              <h2>Likely Judges' Questions</h2>
-              <p className="fieldNote">
-                Practice questions likely to be asked by professors, judges, peers, or policy stakeholders.
+      <section className={styles.verticalSections}>
+        <article className={styles.accordionItem}>
+          <button
+            type="button"
+            className={`${styles.sectionHeader} ${
+              activeSection === "export" ? styles.sectionHeaderActive : ""
+            }`}
+            onClick={() => toggleMainSection("export")}
+          >
+            <span>1. Export as PPT</span>
+            <strong>
+              {activeSection === "export" ? "Collapse" : "Expand"} ·{" "}
+              {selectedExportCount}/{exportItems.length} selected
+            </strong>
+          </button>
+
+          {activeSection === "export" ? (
+            <section className={styles.sectionBody}>
+              <p className={styles.sectionIntro}>
+                Select the final poster sections and additional boxes you want
+                to include in the presentation export.
               </p>
-            </div>
 
-            <div style={{ display: "grid", gap: 16 }}>
-              {questions.map((question) => (
-                <div key={question.id} className="panelCard">
-                  <div className="panelHeader">
-                    <div>
-                      <h3 style={{ marginBottom: 4 }}>{question.question}</h3>
-                      <p className="fieldNote" style={{ marginBottom: 0 }}>
-                        {question.difficulty} · {question.theme}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="fieldLabel">
-                    <label>Student answer</label>
-                    <textarea
-                      rows={4}
-                      value={question.answer}
-                      onChange={(event) =>
-                        updateQuestion(question.id, "answer", event.target.value)
-                      }
-                      placeholder="Practice your answer here..."
+              <div className={styles.checkGrid}>
+                {exportItems.map((item) => (
+                  <label key={item.id} className={styles.checkCard}>
+                    <input
+                      type="checkbox"
+                      checked={item.selected}
+                      onChange={() => toggleExportItem(item.id)}
                     />
-                  </div>
 
-                  <button
-                    type="button"
-                    className="button secondaryButton"
-                    onClick={() => generateFeedback(question)}
-                  >
-                    Get AI Feedback
-                  </button>
-
-                  {question.feedback ? (
-                    <div className="panelHint" style={{ marginTop: 12 }}>
-                      {question.feedback}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <aside style={{ display: "grid", gap: 16 }}>
-            <SidebarPanel title="Q&A Strategy">
-              <Tip text="Answer directly first, then explain." />
-              <Tip text="Use evidence from the poster when possible." />
-              <Tip text="If you do not know, acknowledge the limitation and explain how you would find out." />
-              <Tip text="Do not defend everything; show learning and reflection." />
-              <Tip text="Always connect back to feasibility, equity, and implementation." />
-            </SidebarPanel>
-
-            <SidebarPanel title="Question Types">
-              <Tip text="Problem: Why this issue?" />
-              <Tip text="Evidence: What supports your claim?" />
-              <Tip text="Solution: Why this intervention?" />
-              <Tip text="Implementation: Who will deliver it?" />
-              <Tip text="Budget: Why this cost?" />
-              <Tip text="Risk: What could fail?" />
-            </SidebarPanel>
-          </aside>
-        </div>
-      ) : null}
-
-      {currentTab === "readiness" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 340px",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          <section className="panelCard">
-            <div className="panelHeader">
-              <h2>Final Readiness Checklist</h2>
-              <p className="fieldNote">
-                Use this before the final presentation or classroom assessment.
-              </p>
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {checklist.map((item) => (
-                <label
-                  key={item.id}
-                  className="panelHint"
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.checked}
-                    onChange={() => toggleChecklist(item.id)}
-                    style={{ width: "auto" }}
-                  />
-                  <strong>{item.label}</strong>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          <aside style={{ display: "grid", gap: 16 }}>
-            <SidebarPanel title="Readiness Summary">
-              <div className="panelHint">
-                <strong>{readinessScore}% ready</strong>
-                <p className="fieldNote" style={{ marginBottom: 0 }}>
-                  Keep improving until the team is confident with the pitch and Q&A.
-                </p>
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.source}</small>
+                    </span>
+                  </label>
+                ))}
               </div>
 
-              <button type="button" className="button" onClick={saveProgress}>
-                Save Final Readiness
-              </button>
-            </SidebarPanel>
+              <div className={styles.sectionActions}>
+                <button
+                  type="button"
+                  className="button secondaryButton"
+                  onClick={() =>
+                    setExportItems((prev) =>
+                      prev.map((item) => ({ ...item, selected: true }))
+                    )
+                  }
+                >
+                  Select All
+                </button>
 
-            <SidebarPanel title="Final Reminder">
-              <Tip text="Know your opening sentence." />
-              <Tip text="Do not read the poster word by word." />
-              <Tip text="Explain the logic of your policy." />
-              <Tip text="Use the poster as support, not as a script." />
-              <Tip text="End with a confident recommendation." />
-            </SidebarPanel>
-          </aside>
-        </div>
-      ) : null}
+                <button
+                  type="button"
+                  className="button secondaryButton"
+                  onClick={() =>
+                    setExportItems((prev) =>
+                      prev.map((item) => ({ ...item, selected: false }))
+                    )
+                  }
+                >
+                  Clear
+                </button>
+
+                <button
+                  type="button"
+                  className="button"
+                  onClick={preparePowerPointExport}
+                >
+                  Prepare PPT Export
+                </button>
+              </div>
+            </section>
+          ) : null}
+        </article>
+
+        <article className={styles.accordionItem}>
+          <button
+            type="button"
+            className={`${styles.sectionHeader} ${
+              activeSection === "script" ? styles.sectionHeaderActive : ""
+            }`}
+            onClick={() => toggleMainSection("script")}
+          >
+            <span>2. Script for Pitch</span>
+            <strong>
+              {activeSection === "script" ? "Collapse" : "Expand"} ·{" "}
+              {selectedPitchCount}/{pitchSections.length} included
+            </strong>
+          </button>
+
+          {activeSection === "script" ? (
+            <section className={styles.sectionBody}>
+              <p className={styles.sectionIntro}>
+                Import and edit the script from the final poster headings. Each
+                subsection opens only when clicked.
+              </p>
+
+              <div className={styles.pitchList}>
+                {pitchSections.map((section) => (
+                  <article key={section.id} className={styles.pitchCard}>
+                    <div className={styles.pitchHeader}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={section.selected}
+                          onChange={() => togglePitchSelection(section.id)}
+                        />{" "}
+                        <strong>{section.title}</strong>
+                      </label>
+
+                      <button
+                        type="button"
+                        className="button secondaryButton"
+                        onClick={() => togglePitchOpen(section.id)}
+                      >
+                        {section.open ? "Hide" : "Open"}
+                      </button>
+                    </div>
+
+                    {section.open ? (
+                      <div className={styles.pitchContent}>
+                        {section.content ? (
+                          <div className={styles.importedContent}>
+                            <strong>Imported poster content</strong>
+                            <p>{section.content}</p>
+                          </div>
+                        ) : null}
+
+                        <label className="fieldLabel">
+                          <span>Editable pitch script</span>
+                          <textarea
+                            rows={6}
+                            value={section.script}
+                            onChange={(event) =>
+                              updatePitch(section.id, event.target.value)
+                            }
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </article>
+
+        <article className={styles.accordionItem}>
+          <button
+            type="button"
+            className={`${styles.sectionHeader} ${
+              activeSection === "qa" ? styles.sectionHeaderActive : ""
+            }`}
+            onClick={() => toggleMainSection("qa")}
+          >
+            <span>3. Judges Q&amp;A</span>
+            <strong>
+              {activeSection === "qa" ? "Collapse" : "Expand"} ·{" "}
+              {questions.length} questions
+            </strong>
+          </button>
+
+          {activeSection === "qa" ? (
+            <section className={styles.sectionBody}>
+              <p className={styles.sectionIntro}>
+                Open each question and prepare your own answer. The answer boxes
+                are intentionally empty so students actively prepare.
+              </p>
+
+              <div className={styles.qaList}>
+                {questions.map((question, index) => (
+                  <article key={question.id} className={styles.qaCard}>
+                    <button
+                      type="button"
+                      className={styles.qaQuestion}
+                      onClick={() => toggleQuestionOpen(question.id)}
+                    >
+                      <strong>
+                        {index + 1}. {question.question}
+                      </strong>
+                      <span>{question.open ? "Hide" : "Open"}</span>
+                    </button>
+
+                    {question.open ? (
+                      <textarea
+                        rows={5}
+                        value={question.answer}
+                        onChange={(event) =>
+                          updateAnswer(question.id, event.target.value)
+                        }
+                        placeholder="Prepare your answer here..."
+                      />
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </article>
+      </section>
     </main>
-  );
-}
-
-function SidebarPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="panelCard">
-      <div className="panelHeader">
-        <h3>{title}</h3>
-      </div>
-
-      <div style={{ display: "grid", gap: 12 }}>{children}</div>
-    </div>
-  );
-}
-
-function Tip({ text }: { text: string }) {
-  return (
-    <div className="panelHint">
-      <span className="fieldNote" style={{ marginBottom: 0 }}>
-        {text}
-      </span>
-    </div>
   );
 }

@@ -1,112 +1,99 @@
 ﻿import Link from "next/link";
 
-const studios = [
-  {
-    id: "01",
-    title: "Problem Studio",
-    text: "Explore. Understand. Define.",
-    icon: "🔍",
-  },
-  {
-    id: "02",
-    title: "Process Studio",
-    text: "Analyse. Map. Reflect.",
-    icon: "🧭",
-  },
-  {
-    id: "03",
-    title: "Solution Studio",
-    text: "Generate. Refine. Test.",
-    icon: "💡",
-  },
-  {
-    id: "04",
-    title: "Implementation Studio",
-    text: "Plan. Deliver. Sustain.",
-    icon: "🛠️",
-  },
-  {
-    id: "05",
-    title: "Poster Studio",
-    text: "Communicate. Present. Share.",
-    icon: "📣",
-  },
-];
-
-export default function Home() {
+export default function HomePage() {
   return (
-    <main className="page">
-      <section className="hero">
-        <div className="heroText">
-          <p className="kicker">POLICY LAB</p>
-
-          <h1>Policy Lab Studio</h1>
-
-          <p className="subtitle">
-            A guided learning environment for exploring problems, analysing
-            systems, designing solutions, planning implementation, and
-            communicating policy ideas.
-          </p>
-
-          <div className="supervisorCard">
-            <img
-              src="/images/evren.jpg.jpeg"
-              alt="Dr. Evren Tok"
-              className="supervisorPhoto"
-            />
-
-            <div>
-              <p className="supervisorLabel">Academic Supervision</p>
-
-              <h2>Dr. Evren Tok</h2>
-
-              <p className="supervisorTitle">
-                College of Public Policy, HBKU
-              </p>
-            </div>
+    <main
+      className="page"
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        gridTemplateRows: "1fr auto",
+        background: "#f7f4ec",
+      }}
+    >
+      <section
+        style={{
+          display: "grid",
+          placeItems: "center",
+          padding: "48px 24px",
+        }}
+      >
+        <div
+          className="panelCard"
+          style={{
+            width: "min(900px, 100%)",
+            padding: "56px 40px",
+            textAlign: "center",
+            display: "grid",
+            gap: 18,
+          }}
+        >
+          <div
+            className="fieldNote"
+            style={{
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            POLICY LAB STUDIO
           </div>
 
-          <div className="actionRow" style={{ justifyContent: "flex-start" }}>
-            <Link className="button button-primary" href="/overview">
+          <h1
+            style={{
+              margin: 0,
+              color: "#0f2f66",
+              fontSize: "clamp(2.5rem, 6vw, 4.5rem)",
+              lineHeight: 1.05,
+            }}
+          >
+            Policy Lab Studio
+          </h1>
+
+          <p
+            className="hero-subtitle"
+            style={{
+              margin: "0 auto",
+              maxWidth: 700,
+            }}
+          >
+            A guided workspace for developing evidence-informed policy solutions.
+          </p>
+
+          <div
+            className="actionRow"
+            style={{
+              justifyContent: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginTop: 10,
+            }}
+          >
+            <Link href="/overview" className="button">
               Start Policy Lab
             </Link>
 
-            <Link className="button secondaryButton" href="/dashboard">
-              Go to Dashboard
+            <Link href="/dashboard" className="button secondaryButton">
+              Continue to Dashboard
             </Link>
           </div>
         </div>
-
-        <div className="heroVisual">
-          <img
-            src="/images/scene.jpg"
-            alt="Students collaborating on policy lab"
-            className="heroImage"
-          />
-        </div>
       </section>
 
-      <section className="journey" id="journey">
-        <p className="kicker">POLICY LAB JOURNEY</p>
-
-        <div className="journeyGrid">
-          {studios.map((studio) => (
-            <article className="studioCard" key={studio.id}>
-              <div className="icon">{studio.icon}</div>
-
-              <span>{studio.id}</span>
-
-              <h3>{studio.title}</h3>
-
-              <p>{studio.text}</p>
-            </article>
-          ))}
+      <footer
+        style={{
+          padding: "22px 24px 28px",
+          textAlign: "center",
+          color: "#475569",
+          lineHeight: 1.6,
+        }}
+      >
+        <div>
+          Developed by <strong>Mehreen Afsar Jadoon (Student MGHP)</strong>
         </div>
-      </section>
-
-      <footer className="footer">
-        Designed by Dr. Mehreen Jadoon under the supervision of Dr. Evren Tok,
-        College of Public Policy, HBKU.
+        <div>
+          Under the supervision of <strong>Dr. Evren Tok</strong>
+        </div>
       </footer>
     </main>
   );

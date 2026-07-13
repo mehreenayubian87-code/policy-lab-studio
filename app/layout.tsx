@@ -2,6 +2,7 @@ import { ProjectProvider } from "@/components/ProjectState/ProjectProvider";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -23,12 +24,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
-  <ProjectProvider>
-    {children}
-  </ProjectProvider>
-</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
+      <body suppressHydrationWarning>
+        <ProjectProvider>{children}</ProjectProvider>
+      </body>
     </html>
   );
 }
