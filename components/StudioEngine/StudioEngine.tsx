@@ -2,6 +2,7 @@
 
 import StudioResources from "@/components/ResourceHub/StudioResources";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useProject } from "@/components/ProjectState/ProjectProvider";
 import StudioShell from "@/components/StudioLayout/StudioShell";
 import type {
   ObjectType,
@@ -12,6 +13,8 @@ import type {
 import { objectPresets } from "./objectPresets";
 import IconLibrary from "./IconLibrary";
 import StudioObjectCard from "./StudioObjectCard";
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function StudioEngine({ config }: { config: StudioConfig }) {
   const [objects, setObjects] = useState<StudioObject[]>([]);
@@ -25,6 +28,9 @@ const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
   const [profQuestion, setProfQuestion] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("Not started");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [chartTitle, setChartTitle] = useState("Chart / Graph");
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
   const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
@@ -33,6 +39,9 @@ const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(config.toolGroups.map((group) => [group.title, !group.collapsed]))
   );
+
+  const { project } = useProject();
+  const [feedbackSubmittedAt, setFeedbackSubmittedAt] = useState<string | null>(null);
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const panState = useRef({
@@ -60,21 +69,27 @@ const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
           setObjects(data.objects);
           setSelectedId(data.objects[0]?.id ?? null);
         }
+
         if (Array.isArray(data.connections)) {
-  setConnections(data.connections);
-}
+          setConnections(data.connections);
+        }
 
         if (typeof data.zoom === "number") setZoom(data.zoom);
         if (data.checklistState) setChecklistState(data.checklistState);
+
+        if (typeof data.studentName === "string") setStudentName(data.studentName);
+        if (typeof data.profQuestion === "string") setProfQuestion(data.profQuestion);
+        if (typeof data.feedbackStatus === "string") setFeedbackStatus(data.feedbackStatus);
+        if (typeof data.feedbackSubmittedAt === "string") setFeedbackSubmittedAt(data.feedbackSubmittedAt);
       } else {
-    if (config.studioId === "problem") {
-        createGuidanceCards();
-    }
-}
+        if (config.studioId === "problem") {
+          createGuidanceCards();
+        }
+      }
     } catch (error) {
       console.error(error);
     }
-  }, []);
+  }, [config.storageKey, config.studioId]);
 
   const selectedObject = useMemo(
     () => objects.find((object) => object.id === selectedId) ?? null,
@@ -356,11 +371,15 @@ const deleteConnection = (id: string) => {
     localStorage.setItem(
       config.storageKey,
       JSON.stringify({
-      objects,
-connections,
-zoom,
-checklistState,
-savedAt: new Date().toISOString(),
+        objects,
+        connections,
+        zoom,
+        checklistState,
+        studentName,
+        profQuestion,
+        feedbackStatus,
+        feedbackSubmittedAt,
+        savedAt: new Date().toISOString(),
       })
     );
 
@@ -610,8 +629,92 @@ savedAt: new Date().toISOString(),
     }
   };
 
+  const validStudentEmail =
+    project.setup.students.find(
+      (student) =>
+        student.email.trim() &&
+        emailPattern.test(student.email.trim())
+    )?.email.trim() ?? "";
+
+  const professorInfo = {
+    name: project.setup.professorName.trim(),
+    email: project.setup.professorEmail.trim(),
+  };
+
+  const hasRequiredFeedbackMetadata =
+    Boolean(
+      project.setup.groupNumber.trim() &&
+        project.setup.courseName.trim() &&
+        project.setup.policyIssue.trim() &&
+        professorInfo.name &&
+        emailPattern.test(professorInfo.email) &&
+        validStudentEmail
+    );
+
+  const feedbackReadyToSubmit =
+    studentName.trim() &&
+    profQuestion.trim() &&
+    hasRequiredFeedbackMetadata;
+
+  const submitProfessorFeedback = async () => {
+    setFeedbackMessage("");
+    setFeedbackError("");
+
+    if (!feedbackReadyToSubmit) {
+      setFeedbackError(
+        "Complete all required feedback fields in Team Setup and this form before submitting."
+      );
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+
+    try {
+      const response = await fetch(
+        "/api/professor-feedback/submit",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            projectKey: project.setup.projectId,
+            studioId: config.studioId,
+            studioName: config.title,
+            groupNumber: project.setup.groupNumber.trim(),
+            courseName: project.setup.courseName.trim(),
+            policyIssue: project.setup.policyIssue.trim(),
+            submittedByName: studentName.trim(),
+            submittedByEmail: validStudentEmail,
+            professorName: professorInfo.name,
+            professorEmail: professorInfo.email,
+            question: profQuestion.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setFeedbackError(data.error || "Unable to submit feedback.");
+      } else {
+        setFeedbackMessage(
+          "Professor feedback request submitted successfully."
+        );
+        setFeedbackSubmittedAt(new Date().toISOString());
+        saveProgress();
+      }
+    } catch (error) {
+      console.error("Professor feedback submit failed:", error);
+      setFeedbackError("Unable to submit feedback. Try again later.");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
   const completedChecklist = config.checklist.filter((item) => checklistState[item]).length;
-const selectedObjectConnections = selectedObject
+
+  const selectedObjectConnections = selectedObject
   ? connections.filter(
       (connection) =>
         connection.fromId === selectedObject.id ||
@@ -1319,31 +1422,86 @@ const selectedObjectConnections = selectedObject
       </Panel>
 
       <Panel title="Professor Feedback">
-        <input
-          value={studentName}
-          onChange={(event) => setStudentName(event.target.value)}
-          placeholder="Student name / Group"
-        />
+        <div className="panelHint" style={{ display: "grid", gap: 8 }}>
+          <p className="fieldNote" style={{ marginBottom: 0 }}>
+            Use the Team Setup page to configure group details, professor contact, and policy issue.
+          </p>
+          <p className="fieldNote" style={{ marginBottom: 0 }}>
+            Feedback requests will be submitted for this studio only.
+          </p>
+        </div>
 
-        <textarea
-          rows={4}
-          value={profQuestion}
-          onChange={(event) => setProfQuestion(event.target.value)}
-          placeholder="Write your question for the professor..."
-        />
+        <label className="fieldLabel">
+          <span>Student name / Group</span>
+          <input
+            value={studentName}
+            onChange={(event) => setStudentName(event.target.value)}
+            placeholder="Student name or group"
+          />
+        </label>
 
-        <select
-          value={feedbackStatus}
-          onChange={(event) => setFeedbackStatus(event.target.value)}
-        >
-          <option>Not started</option>
-          <option>In progress</option>
-          <option>Resolved</option>
-        </select>
+        <label className="fieldLabel">
+          <span>Professor question</span>
+          <textarea
+            rows={4}
+            value={profQuestion}
+            onChange={(event) => setProfQuestion(event.target.value)}
+            placeholder="Write your question for the professor..."
+          />
+        </label>
 
-        <button type="button" className="button secondaryButton">
-          Save Feedback
-        </button>
+        <label className="fieldLabel">
+          <span>Professor feedback status</span>
+          <select
+            value={feedbackStatus}
+            onChange={(event) => setFeedbackStatus(event.target.value)}
+          >
+            <option>Not started</option>
+            <option>In progress</option>
+            <option>Resolved</option>
+          </select>
+        </label>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <div className="panelHint" style={{ display: "grid", gap: 4 }}>
+            <p className="fieldNote" style={{ marginBottom: 0 }}>
+              Professor: {professorInfo.name || "Not configured"}
+            </p>
+            <p className="fieldNote" style={{ marginBottom: 0 }}>
+              Contact: {professorInfo.email || "Not configured"}
+            </p>
+            <p className="fieldNote" style={{ marginBottom: 0 }}>
+              Submitter email: {validStudentEmail || "Enter student email on Team Setup"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="button secondaryButton"
+            onClick={submitProfessorFeedback}
+            disabled={!feedbackReadyToSubmit || isSubmittingFeedback}
+          >
+            {isSubmittingFeedback ? "Submitting..." : "Submit Feedback Request"}
+          </button>
+
+          {feedbackMessage ? (
+            <div className="panelHint" style={{ color: "#166534" }}>
+              {feedbackMessage}
+            </div>
+          ) : null}
+
+          {feedbackError ? (
+            <div className="panelHint" style={{ color: "#b91c1c" }}>
+              {feedbackError}
+            </div>
+          ) : null}
+
+          {feedbackSubmittedAt ? (
+            <div className="panelHint" style={{ color: "#0f766e" }}>
+              Last submitted: {new Date(feedbackSubmittedAt).toLocaleString()}
+            </div>
+          ) : null}
+        </div>
       </Panel>
 
       <Panel title={`Checklist (${completedChecklist}/${config.checklist.length})`}>
@@ -1375,19 +1533,19 @@ const selectedObjectConnections = selectedObject
         </div>
       </Panel>
 
-    <Panel title="Resources">
-  <StudioResources
-    studio={
-      config.id === "problem"
-        ? "Problem Studio"
-        : config.id === "process"
-        ? "Process Studio"
-        : config.id === "solution"
-        ? "Solution Studio"
-        : "Implementation Studio"
-    }
-  />
-</Panel>
+      <Panel title="Resources">
+        <StudioResources
+          studio={
+            config.studioId === "problem"
+              ? "Problem Studio"
+              : config.studioId === "process"
+              ? "Process Studio"
+              : config.studioId === "solution"
+              ? "Solution Studio"
+              : "Implementation Studio"
+          }
+        />
+      </Panel>
     </>
   );
 
