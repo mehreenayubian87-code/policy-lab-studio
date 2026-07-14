@@ -69,12 +69,16 @@ export default function HomePage() {
               marginTop: 10,
             }}
           >
-            <Link href="/overview" className="button">
-              Start Policy Lab
+            <Link href="/team-setup" className="button">
+              Register Team
             </Link>
 
-            <Link href="/dashboard" className="button secondaryButton">
-              Continue to Dashboard
+            <Link href="/project-login" className="button secondaryButton">
+              Team Login
+            </Link>
+
+            <Link href="/professor-admin" className="button secondaryButton">
+              Admin Login
             </Link>
           </div>
         </div>

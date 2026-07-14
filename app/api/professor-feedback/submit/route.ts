@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "../../../team-setup/lib/supabaseAdmin";
 
 const allowedStudios = new Set([
   "problem",
@@ -88,6 +88,17 @@ export async function POST(request: Request) {
           error: "One or more email addresses are invalid.",
         },
         { status: 400 }
+      );
+    }
+
+    if (!supabaseAdmin) {
+      console.error("Supabase is not configured for professor feedback.");
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Professor feedback service is not available.",
+        },
+        { status: 503 }
       );
     }
 

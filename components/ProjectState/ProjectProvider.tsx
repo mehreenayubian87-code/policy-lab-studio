@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { saveProjectState } from "./projectStorage";
 
 export type ProjectStudioId =
   | "problem"
@@ -28,8 +29,26 @@ export type ProjectStudent = {
   email: string;
 };
 
+export type ProjectNote = {
+  id: string;
+  content: string;
+  createdAt: string;
+  createdBy: string;
+};
+
+export type ProjectAlert = {
+  id: string;
+  studioId: string;
+  studioName: string;
+  message: string;
+  note?: string;
+  createdAt: string;
+};
+
 export type ProjectSetup = {
   projectId: string;
+  projectNumber: string;
+  projectPassword: string;
   groupNumber: string;
   courseName: string;
   professorName: string;
@@ -42,14 +61,23 @@ export type ProjectSetup = {
 export type ProjectState = {
   setup: ProjectSetup;
   objects: ProjectObject[];
+  notes: ProjectNote[];
+  alerts: ProjectAlert[];
   updatedAt: string | null;
+};
+
+type StoredProjectEntry = {
+  passwordHash: string;
+  projectState: ProjectState;
 };
 
 type ProjectContextValue = {
   project: ProjectState;
   updateSetup: (changes: Partial<ProjectSetup>) => void;
   replaceSetup: (setup: ProjectSetup) => void;
+  replaceProject: (project: ProjectState) => void;
   importObjects: (objects: ProjectObject[]) => void;
+  appendAlert: (studioId: string, studioName: string, message: string, note?: string) => void;
   clearProject: () => void;
 };
 
@@ -57,7 +85,8 @@ const STORAGE_KEY = "policy_lab_project_state_v2";
 
 const initialSetup: ProjectSetup = {
   projectId: crypto.randomUUID(),
-
+  projectNumber: "",
+  projectPassword: "",
   groupNumber: "",
   courseName: "",
   professorName: "",
@@ -76,6 +105,8 @@ const initialSetup: ProjectSetup = {
 const initialProject: ProjectState = {
   setup: initialSetup,
   objects: [],
+  notes: [],
+  alerts: [],
   updatedAt: null,
 };
 
@@ -102,6 +133,22 @@ function normalizeStudents(value: unknown): ProjectStudent[] {
   return students;
 }
 
+function normalizeAlerts(value: unknown): ProjectAlert[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item): item is ProjectAlert => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : crypto.randomUUID(),
+      studioId: typeof item.studioId === "string" ? item.studioId : "unknown",
+      studioName: typeof item.studioName === "string" ? item.studioName : "Unknown Studio",
+      message: typeof item.message === "string" ? item.message : "",
+      note: typeof item.note === "string" ? item.note : undefined,
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+    }))
+    .filter((item) => item.message.trim());
+}
+
 function normalizeSetup(value: unknown): ProjectSetup {
   const setup =
     value && typeof value === "object"
@@ -115,6 +162,14 @@ function normalizeSetup(value: unknown): ProjectSetup {
     ? setup.projectId
     : crypto.randomUUID(),
     
+    projectNumber:
+      typeof setup.projectNumber === "string"
+        ? setup.projectNumber
+        : "",
+    projectPassword:
+      typeof setup.projectPassword === "string"
+        ? setup.projectPassword
+        : "",
     groupNumber:
       typeof setup.groupNumber === "string"
         ? setup.groupNumber
@@ -164,6 +219,8 @@ export function ProjectProvider({
           objects: Array.isArray(parsed.objects)
             ? parsed.objects
             : [],
+          notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+          alerts: normalizeAlerts(parsed.alerts),
           updatedAt:
             typeof parsed.updatedAt === "string"
               ? parsed.updatedAt
@@ -182,6 +239,8 @@ export function ProjectProvider({
             objects: Array.isArray(oldParsed.objects)
               ? oldParsed.objects
               : [],
+            notes: [],
+            alerts: [],
             updatedAt:
               typeof oldParsed.updatedAt === "string"
                 ? oldParsed.updatedAt
@@ -209,6 +268,17 @@ export function ProjectProvider({
     }
   }, [hydrated, project]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!project.setup.projectNumber.trim()) return;
+
+    try {
+      saveProjectState(project);
+    } catch (error) {
+      console.error("Unable to persist project storage:", error);
+    }
+  }, [hydrated, project]);
+
   const updateSetup = (
     changes: Partial<ProjectSetup>
   ) => {
@@ -224,6 +294,20 @@ export function ProjectProvider({
       },
       updatedAt: new Date().toISOString(),
     }));
+  };
+
+  const replaceProject = (projectState: ProjectState) => {
+    setProject({
+      ...projectState,
+      setup: normalizeSetup(projectState.setup),
+      objects: Array.isArray(projectState.objects)
+        ? projectState.objects
+        : [],
+      notes: Array.isArray(projectState.notes)
+        ? projectState.notes
+        : [],
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   const replaceSetup = (setup: ProjectSetup) => {
@@ -259,8 +343,43 @@ export function ProjectProvider({
     });
   };
 
+  const appendAlert = (
+    studioId: string,
+    studioName: string,
+    message: string,
+    note?: string
+  ) => {
+    if (!message.trim()) return;
+
+    setProject((previous) => ({
+      ...previous,
+      alerts: [
+        ...previous.alerts,
+        {
+          id: crypto.randomUUID(),
+          studioId,
+          studioName,
+          message: message.trim(),
+          note: note?.trim() ? note.trim() : undefined,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const clearProject = () => {
-    setProject(initialProject);
+    setProject((previous) => {
+      if (previous.setup.projectNumber.trim()) {
+        try {
+          saveProjectState(previous);
+        } catch (error) {
+          console.error("Unable to persist project before logout:", error);
+        }
+      }
+
+      return initialProject;
+    });
 
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -277,7 +396,9 @@ export function ProjectProvider({
       project,
       updateSetup,
       replaceSetup,
+      replaceProject,
       importObjects,
+      appendAlert,
       clearProject,
     }),
     [project]

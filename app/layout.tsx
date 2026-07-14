@@ -1,4 +1,5 @@
 import { ProjectProvider } from "@/components/ProjectState/ProjectProvider";
+import TeamSessionBar from "@/components/TeamAccess/TeamSessionBar";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -30,7 +31,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body suppressHydrationWarning>
-        <ProjectProvider>{children}</ProjectProvider>
+        <ProjectProvider>
+          <TeamSessionBar>{children}</TeamSessionBar>
+        </ProjectProvider>
       </body>
     </html>
   );

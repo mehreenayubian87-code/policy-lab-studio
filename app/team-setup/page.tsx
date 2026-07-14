@@ -1,298 +1,178 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import {
-  type ProjectStudent,
-  useProject,
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type {
+  ProjectStudent,
+  ProjectState,
 } from "@/components/ProjectState/ProjectProvider";
+import { saveProjectState } from "@/components/ProjectState/projectStorage";
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emptyStudent = (): ProjectStudent => ({ name: "", email: "" });
 
 export default function TeamSetupPage() {
-  const { project, updateSetup } = useProject();
-  const {
-    groupNumber,
-    courseName,
-    professorName,
-    professorEmail,
-    policyIssue,
-    students,
-    teamLead,
-  } = project.setup;
+  const router = useRouter();
 
-  const completedStudents = useMemo(
-    () =>
-      students.filter(
-        (student) =>
-          student.name.trim() &&
-          emailPattern.test(student.email.trim())
-      ).length,
-    [students]
-  );
+  const [projectNumber, setProjectNumber] = useState("");
+  const [projectPassword, setProjectPassword] = useState("");
+  const [projectTitle, setProjectTitle] = useState("");
 
-  const professorEmailValid =
-    !professorEmail.trim() ||
-    emailPattern.test(professorEmail.trim());
+  const [students, setStudents] = useState<ProjectStudent[]>([
+    emptyStudent(),
+    emptyStudent(),
+  ]);
 
-  const studentEmailsValid = students.every(
-    (student) =>
-      !student.email.trim() ||
-      emailPattern.test(student.email.trim())
-  );
+  const [teamLead, setTeamLead] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
-  const teamLeadMatchesStudent = students.some(
-    (student) =>
-      student.name.trim().toLowerCase() ===
-      teamLead.trim().toLowerCase()
-  );
-
-  const canContinue =
-    groupNumber.trim() &&
-    courseName.trim() &&
-    professorName.trim() &&
-    professorEmail.trim() &&
-    professorEmailValid &&
-    policyIssue.trim() &&
-    teamLead.trim() &&
-    teamLeadMatchesStudent &&
-    completedStudents >= 2 &&
-    studentEmailsValid;
-
-  const updateStudent = (
-    index: number,
-    key: keyof ProjectStudent,
-    value: string
-  ) => {
-    const updatedStudents = students.map((student, studentIndex) =>
-      studentIndex === index
-        ? { ...student, [key]: value }
-        : student
+  function updateStudent(index: number, key: keyof ProjectStudent, value: string) {
+    setStudents((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, [key]: value } : s))
     );
+  }
 
-    updateSetup({ students: updatedStudents });
-  };
+  function addStudent() {
+    setStudents((prev) => (prev.length < 5 ? [...prev, emptyStudent()] : prev));
+  }
+
+  function removeStudent(index: number) {
+    setStudents((prev) => prev.filter((_, i) => i !== index));
+    setTeamLead((lead) => (lead === students[index]?.name ? "" : lead));
+  }
+
+  const validStudents = students.filter((s) => s.name.trim() && s.email.trim());
+  const canSubmit =
+    projectNumber.trim() && projectPassword.trim().length >= 6 && validStudents.length >= 2;
+
+  function clearForm() {
+    setProjectNumber("");
+    setProjectPassword("");
+    setProjectTitle("");
+    setStudents([emptyStudent(), emptyStudent()]);
+    setTeamLead("");
+    setSubmitted(false);
+  }
+
+  function handleSubmit() {
+    if (!canSubmit) return;
+
+    const normalizedStudents: ProjectStudent[] = [...students]
+      .slice(0, 5)
+      .map((s) => ({ name: s.name || "", email: s.email || "" }));
+
+    while (normalizedStudents.length < 5) {
+      normalizedStudents.push(emptyStudent());
+    }
+
+    const project: ProjectState = {
+      setup: {
+        projectId: crypto.randomUUID(),
+        projectNumber: projectNumber.trim(),
+        projectPassword: projectPassword,
+        groupNumber: "",
+        courseName: "",
+        professorName: "",
+        professorEmail: "",
+        policyIssue: projectTitle.trim(),
+        students: normalizedStudents,
+        teamLead: teamLead,
+      },
+      objects: [],
+      notes: [],
+      alerts: [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      saveProjectState(project);
+      // Clear the visible form fields after registration
+      setProjectNumber("");
+      setProjectPassword("");
+      setProjectTitle("");
+      setStudents([emptyStudent(), emptyStudent()]);
+      setTeamLead("");
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Unable to save project:", error);
+    }
+  }
 
   return (
     <main className="page">
-      <section
-        className="panelCard"
-        style={{
-          padding: 32,
-          marginBottom: 20,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <div className="fieldNote" style={{ fontWeight: 800 }}>
-          POLICY LAB STUDIO
-        </div>
-
+      <section className="panelCard" style={{ padding: 28 }}>
+        <div className="fieldNote" style={{ fontWeight: 800 }}>POLICY LAB STUDIO</div>
         <h1 style={{ marginBottom: 4 }}>Team Setup</h1>
+        <p className="hero-subtitle">Register a team by creating a project number and password.</p>
 
-        <p className="hero-subtitle" style={{ marginBottom: 0 }}>
-          Add the basic project and team information before continuing.
-        </p>
-      </section>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr)",
-          gap: 18,
-        }}
-      >
-        <div className="panelCard">
-          <div className="panelHeader">
-            <h2>Project Information</h2>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 16,
-            }}
-          >
+        {!submitted ? (
+          <div style={{ display: "grid", gap: 16, marginTop: 18 }}>
             <label className="fieldLabel">
-              <span>Group number</span>
-              <input
-                value={groupNumber}
-                onChange={(event) =>
-                  updateSetup({ groupNumber: event.target.value })
-                }
-                placeholder="e.g. 1"
-              />
+              <span>Project number</span>
+              <input value={projectNumber} onChange={(e) => setProjectNumber(e.target.value)} placeholder="e.g. TEAM-1234" />
             </label>
 
             <label className="fieldLabel">
-              <span>Course / session</span>
-              <input
-                value={courseName}
-                onChange={(event) =>
-                  updateSetup({ courseName: event.target.value })
-                }
-                placeholder="e.g. MGHP Policy Lab"
-              />
+              <span>Project password</span>
+              <input type="password" value={projectPassword} onChange={(e) => setProjectPassword(e.target.value)} placeholder="At least 6 characters" />
             </label>
 
             <label className="fieldLabel">
-              <span>Professor name</span>
-              <input
-                value={professorName}
-                onChange={(event) =>
-                  updateSetup({ professorName: event.target.value })
-                }
-                placeholder="e.g. Dr. ..."
-              />
+              <span>Project title</span>
+              <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} placeholder="Short project title" />
             </label>
 
-            <label className="fieldLabel">
-              <span>Professor email</span>
-              <input
-                type="email"
-                value={professorEmail}
-                onChange={(event) =>
-                  updateSetup({ professorEmail: event.target.value })
-                }
-                placeholder="professor@university.edu"
-              />
+            <div className="panelCard" style={{ padding: 12 }}>
+              <div className="panelHeader">
+                <h2 style={{ margin: 0 }}>Team Members</h2>
+                <p className="fieldNote">Enter names and emails for at least two members.</p>
+              </div>
 
-              {!professorEmailValid ? (
-                <small style={{ color: "#b91c1c", fontWeight: 700 }}>
-                  Enter a valid professor email.
-                </small>
-              ) : null}
-            </label>
-
-            <label
-              className="fieldLabel"
-              style={{ gridColumn: "1 / -1" }}
-            >
-              <span>Policy issue</span>
-              <input
-                value={policyIssue}
-                onChange={(event) =>
-                  updateSetup({ policyIssue: event.target.value })
-                }
-                placeholder="e.g. Access to mental health services"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="panelCard">
-          <div className="panelHeader">
-            <h2>Team Members</h2>
-            <p className="fieldNote">
-              Enter at least two student names and emails.
-            </p>
-          </div>
-
-          <div style={{ display: "grid", gap: 12 }}>
-            {students.map((student, index) => {
-              const emailValid =
-                !student.email.trim() ||
-                emailPattern.test(student.email.trim());
-
-              return (
-                <div
-                  key={index}
-                  className="panelHint"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "minmax(0, 1fr) minmax(0, 1fr)",
-                    gap: 12,
-                    alignItems: "start",
-                  }}
-                >
-                  <label className="fieldLabel">
-                    <span>Student {index + 1} name</span>
-                    <input
-                      value={student.name}
-                      onChange={(event) =>
-                        updateStudent(index, "name", event.target.value)
-                      }
-                      placeholder={`Student ${index + 1} name`}
-                    />
-                  </label>
-
-                  <label className="fieldLabel">
-                    <span>Student {index + 1} email</span>
-                    <input
-                      type="email"
-                      value={student.email}
-                      onChange={(event) =>
-                        updateStudent(index, "email", event.target.value)
-                      }
-                      placeholder="student@university.edu"
-                    />
-
-                    {!emailValid ? (
-                      <small
-                        style={{
-                          color: "#b91c1c",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Enter a valid student email.
-                      </small>
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                {students.map((student, index) => (
+                  <div key={index} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input value={student.name} onChange={(e) => updateStudent(index, "name", e.target.value)} placeholder={`Student ${index + 1} name`} />
+                    <input value={student.email} onChange={(e) => updateStudent(index, "email", e.target.value)} placeholder={`Student ${index + 1} email`} />
+                    {students.length > 2 ? (
+                      <button type="button" className="button secondaryButton" onClick={() => removeStudent(index)}>Remove</button>
                     ) : null}
-                  </label>
+                  </div>
+                ))}
+
+                <div>
+                  <button type="button" className="button" onClick={addStudent} disabled={students.length >= 5}>Add member</button>
                 </div>
-              );
-            })}
+
+                <label className="fieldLabel">
+                  <span>Project lead</span>
+                  <select value={teamLead} onChange={(e) => setTeamLead(e.target.value)}>
+                    <option value="">Select a lead</option>
+                    {students
+                      .filter((s) => s.name.trim())
+                      .map((s, i) => (
+                        <option key={i} value={s.name}>{s.name}</option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button type="button" className="button" onClick={handleSubmit} disabled={!canSubmit}>Register Team</button>
+              <Link href="/" className="button secondaryButton">Cancel</Link>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+            <div className="fieldNote" style={{ fontWeight: 700 }}>Team registered successfully.</div>
 
-        <div className="panelCard">
-          <div className="panelHeader">
-            <h2>Team Lead</h2>
+            <div style={{ display: "flex", gap: 12 }}>
+              <Link href="/project-login" className="button">Team Login</Link>
+              <button type="button" className="button secondaryButton" onClick={() => clearForm()}>Register another team</button>
+              <Link href="/dashboard" className="button secondaryButton">Continue to Dashboard</Link>
+            </div>
           </div>
-
-          <label className="fieldLabel">
-            <span>Team lead name</span>
-            <input
-              value={teamLead}
-              onChange={(event) =>
-                updateSetup({ teamLead: event.target.value })
-              }
-              placeholder="Enter one of the student names listed above"
-            />
-
-            {teamLead.trim() && !teamLeadMatchesStudent ? (
-              <small style={{ color: "#b91c1c", fontWeight: 700 }}>
-                Team lead must match one of the student names above.
-              </small>
-            ) : null}
-          </label>
-        </div>
-
-        <div
-          className="panelCard"
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <Link href="/overview" className="button secondaryButton">
-            Back to Overview
-          </Link>
-
-          {canContinue ? (
-            <Link href="/resource-hub" className="button">
-              Continue to Resource Hub
-            </Link>
-          ) : (
-            <button type="button" className="button" disabled>
-              Complete required fields
-            </button>
-          )}
-        </div>
+        )}
       </section>
     </main>
   );

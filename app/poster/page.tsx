@@ -294,7 +294,7 @@ const themeMap: Record<ThemeName, { label: string; primary: string; accent: stri
 const placeholderTexts = ["describe", "add", "summarize", "placeholder"];
 
 export default function PosterStudioPage() {
-  const { importObjects } = useProject();
+  const { project, importObjects, appendAlert } = useProject();
 
   const [posterHeader, setPosterHeader] = useState<PosterHeader>(initialHeader);
   const [blocks, setBlocks] = useState<PosterBlock[]>(initialBlocks);
@@ -1065,6 +1065,14 @@ export default function PosterStudioPage() {
   const posterWidth = orientation === "landscape" ? 1400 : 980;
   const posterHeight = orientation === "landscape" ? 2100 : 2400;
 
+  const handlePosterAlert = () => {
+    const message = `Please review a change or query in Poster Studio for project ${project.setup.projectNumber || project.setup.policyIssue || "this team"}.`;
+    const note = window.prompt("Add an optional note for the admin (leave blank to skip):", "");
+    appendAlert("poster", "Poster Studio", message, note ?? undefined);
+    setSavedStatus("Admin alert sent.");
+    setTimeout(() => setSavedStatus(""), 2200);
+  };
+
   return (
     <main className="page">
       <section className={styles.topHeader}>
@@ -1079,6 +1087,7 @@ export default function PosterStudioPage() {
           <Link href="/implementation" className="button secondaryButton">Previous Studio</Link>
           <Link href="/presentation" className="button secondaryButton">Next Studio</Link>
           <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview"}</button>
+          <button type="button" className="button" onClick={handlePosterAlert}>Alert Admin</button>
           <button type="button" className="button" onClick={() => window.print()}>Export</button>
           <button type="button" className="button" onClick={() => savePoster(false)}>Save Progress</button>
         </div>

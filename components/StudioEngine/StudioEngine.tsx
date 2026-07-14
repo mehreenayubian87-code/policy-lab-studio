@@ -1,7 +1,7 @@
 "use client";
 
 import StudioResources from "@/components/ResourceHub/StudioResources";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import StudioShell from "@/components/StudioLayout/StudioShell";
 import type {
@@ -16,32 +16,103 @@ import StudioObjectCard from "./StudioObjectCard";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function buildId(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
 export default function StudioEngine({ config }: { config: StudioConfig }) {
-  const [objects, setObjects] = useState<StudioObject[]>([]);
-  const [connections, setConnections] = useState<StudioConnection[]>([]);
-const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const SNAP_SIZE = 28;
+  const WORKSPACE_WIDTH = 6000;
+  const WORKSPACE_HEIGHT = 4200;
+
+  const snapToGrid = (value: number) => Math.round(value / SNAP_SIZE) * SNAP_SIZE;
+
+  const buildGuidanceCards = () =>
+    config.guidanceCards.map((card, index): StudioObject => {
+      const type = card.objectType ?? "sticky";
+      const preset = objectPresets[type];
+
+      return {
+        id: buildId(`guidance-${index}`),
+        ...preset,
+        type,
+        title: card.title,
+        content: card.prompt,
+        x: snapToGrid(60 + (index % 2) * 520),
+        y: snapToGrid(70 + Math.floor(index / 2) * 260),
+        width: type === "sticky" ? 340 : preset.width,
+        height: type === "sticky" ? 180 : preset.height,
+        createdIn: config.studioId,
+      };
+    });
+
+  const loadInitialStudioState = () => {
+    const defaultGuidanceCards = config.studioId === "problem" ? buildGuidanceCards() : [];
+    const fallback = {
+      objects: defaultGuidanceCards,
+      connections: [] as StudioConnection[],
+      zoom: 1,
+      checklistState: {} as Record<string, boolean>,
+      studentName: "",
+      feedbackEmail: "",
+      profQuestion: "",
+      feedbackStatus: "Not started",
+      selectedId: defaultGuidanceCards[0]?.id ?? null,
+    };
+
+    if (typeof window === "undefined") {
+      return fallback;
+    }
+
+    try {
+      const raw = localStorage.getItem(config.storageKey);
+      if (!raw) return fallback;
+
+      const data = JSON.parse(raw);
+
+      return {
+        objects: Array.isArray(data.objects) ? data.objects : fallback.objects,
+        connections: Array.isArray(data.connections) ? data.connections : fallback.connections,
+        zoom: typeof data.zoom === "number" ? data.zoom : fallback.zoom,
+        checklistState: data.checklistState ?? fallback.checklistState,
+        studentName: typeof data.studentName === "string" ? data.studentName : fallback.studentName,
+        feedbackEmail: typeof data.feedbackEmail === "string" ? data.feedbackEmail : fallback.feedbackEmail,
+        profQuestion: typeof data.profQuestion === "string" ? data.profQuestion : fallback.profQuestion,
+        feedbackStatus: typeof data.feedbackStatus === "string" ? data.feedbackStatus : fallback.feedbackStatus,
+        selectedId: Array.isArray(data.objects) ? data.objects[0]?.id ?? null : fallback.selectedId,
+      };
+    } catch (error) {
+      console.error(error);
+      return fallback;
+    }
+  };
+
+  const initialStudioState = loadInitialStudioState();
+
+  const [objects, setObjects] = useState<StudioObject[]>(initialStudioState.objects);
+  const [connections, setConnections] = useState<StudioConnection[]>(initialStudioState.connections);
+  const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialStudioState.selectedId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(initialStudioState.zoom);
   const [saved, setSaved] = useState("");
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [studentName, setStudentName] = useState("");
-  const [profQuestion, setProfQuestion] = useState("");
-  const [feedbackStatus, setFeedbackStatus] = useState("Not started");
-  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [studentName, setStudentName] = useState(initialStudioState.studentName);
+  const [feedbackEmail, setFeedbackEmail] = useState(initialStudioState.feedbackEmail);
+  const [profQuestion, setProfQuestion] = useState(initialStudioState.profQuestion);
+  const [feedbackStatus, setFeedbackStatus] = useState(initialStudioState.feedbackStatus);
   const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackSuccess, setFeedbackSuccess] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [chartTitle, setChartTitle] = useState("Chart / Graph");
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
   const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
+  const { project, appendAlert } = useProject();
   const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
-  const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
+  const [checklistState, setChecklistState] = useState<Record<string, boolean>>(initialStudioState.checklistState);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(config.toolGroups.map((group) => [group.title, !group.collapsed]))
   );
-
-  const { project } = useProject();
-  const [feedbackSubmittedAt, setFeedbackSubmittedAt] = useState<string | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const panState = useRef({
@@ -51,45 +122,6 @@ const [connectionFromId, setConnectionFromId] = useState<string | null>(null);
     scrollLeft: 0,
     scrollTop: 0,
   });
-
-  const SNAP_SIZE = 28;
-  const WORKSPACE_WIDTH = 6000;
-  const WORKSPACE_HEIGHT = 4200;
-
-  const snapToGrid = (value: number) => Math.round(value / SNAP_SIZE) * SNAP_SIZE;
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(config.storageKey);
-
-      if (raw) {
-        const data = JSON.parse(raw);
-
-        if (Array.isArray(data.objects)) {
-          setObjects(data.objects);
-          setSelectedId(data.objects[0]?.id ?? null);
-        }
-
-        if (Array.isArray(data.connections)) {
-          setConnections(data.connections);
-        }
-
-        if (typeof data.zoom === "number") setZoom(data.zoom);
-        if (data.checklistState) setChecklistState(data.checklistState);
-
-        if (typeof data.studentName === "string") setStudentName(data.studentName);
-        if (typeof data.profQuestion === "string") setProfQuestion(data.profQuestion);
-        if (typeof data.feedbackStatus === "string") setFeedbackStatus(data.feedbackStatus);
-        if (typeof data.feedbackSubmittedAt === "string") setFeedbackSubmittedAt(data.feedbackSubmittedAt);
-      } else {
-        if (config.studioId === "problem") {
-          createGuidanceCards();
-        }
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }, [config.storageKey, config.studioId]);
 
   const selectedObject = useMemo(
     () => objects.find((object) => object.id === selectedId) ?? null,
@@ -228,7 +260,7 @@ const distributeSelected = (direction: "horizontal" | "vertical") => {
     const position = findOpenPosition(preset.width, preset.height);
 
     const object: StudioObject = {
-      id: `${type}-${Date.now()}`,
+      id: buildId(type),
       ...preset,
       x: position.x,
       y: position.y,
@@ -246,7 +278,7 @@ const distributeSelected = (direction: "horizontal" | "vertical") => {
       const preset = objectPresets[type];
 
       return {
-        id: `guidance-${index}-${Date.now()}`,
+        id: buildId(`guidance-${index}`),
         ...preset,
         type,
         title: card.title,
@@ -296,7 +328,7 @@ const completeConnection = (toId: string) => {
   }
 
   const newConnection: StudioConnection = {
-    id: `connection-${Date.now()}`,
+    id: buildId("connection"),
     fromId: connectionFromId,
     toId,
     label: "related to",
@@ -330,7 +362,7 @@ const deleteConnection = (id: string) => {
 
     const copy: StudioObject = {
       ...object,
-      id: `${object.type}-${Date.now()}`,
+      id: buildId(object.type),
       title: `${object.title} Copy`,
       x: snapToGrid(object.x + 42),
       y: snapToGrid(object.y + 42),
@@ -350,22 +382,6 @@ const deleteConnection = (id: string) => {
     );
   };
 
-  const generateAIVisual = () => {
-    const prompt = aiPrompt.trim();
-
-    addObject("aiVisual", {
-      title: prompt ? "AI Visual: " + prompt.slice(0, 34) : "AI Visual",
-      content: prompt
-        ? `AI visual placeholder generated from prompt: "${prompt}". Later this will create a real graph, map, persona, matrix, timeline, or infographic.`
-        : "AI visual placeholder. Add a prompt first.",
-      width: 430,
-      height: 260,
-      color: "#ccfbf1",
-      icon: "✨",
-    });
-
-    setAiPrompt("");
-  };
 
   const saveProgress = () => {
     localStorage.setItem(
@@ -376,15 +392,90 @@ const deleteConnection = (id: string) => {
         zoom,
         checklistState,
         studentName,
+        feedbackEmail,
         profQuestion,
         feedbackStatus,
-        feedbackSubmittedAt,
         savedAt: new Date().toISOString(),
       })
     );
 
     setSaved("Progress saved.");
     setTimeout(() => setSaved(""), 2000);
+  };
+
+  const handleStudioAlert = () => {
+    const message = `Please review a change or query in ${config.title} for project ${project.setup.projectNumber || project.setup.policyIssue || "this team"}.`;
+    const note = window.prompt("Add an optional note for the admin (leave blank to skip):", "");
+    appendAlert(config.studioId, config.title, message, note ?? undefined);
+    setSaved("Admin alert sent.");
+    setTimeout(() => setSaved(""), 2200);
+  };
+
+  const submitProfessorFeedback = async () => {
+    setFeedbackError("");
+    setFeedbackSuccess("");
+
+    if (!project.setup.groupNumber.trim() || !project.setup.courseName.trim() || !project.setup.policyIssue.trim() || !project.setup.professorName.trim() || !project.setup.professorEmail.trim()) {
+      setFeedbackError(
+        "Complete your team setup information before requesting professor feedback."
+      );
+      return;
+    }
+
+    if (!studentName.trim()) {
+      setFeedbackError("Enter your student or group name before submitting.");
+      return;
+    }
+
+    if (!feedbackEmail.trim() || !emailPattern.test(feedbackEmail.trim())) {
+      setFeedbackError("Enter a valid student email before submitting.");
+      return;
+    }
+
+    if (!profQuestion.trim()) {
+      setFeedbackError("Write a question for your professor before submitting.");
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+
+    try {
+      const response = await fetch("/api/professor-feedback/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectKey: project.setup.projectId,
+          studioId: config.studioId,
+          studioName: config.title,
+          groupNumber: project.setup.groupNumber.trim(),
+          courseName: project.setup.courseName.trim(),
+          policyIssue: project.setup.policyIssue.trim(),
+          submittedByName: studentName.trim(),
+          submittedByEmail: feedbackEmail.trim(),
+          professorName: project.setup.professorName.trim(),
+          professorEmail: project.setup.professorEmail.trim(),
+          question: profQuestion.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Unable to submit feedback.");
+      }
+
+      setFeedbackSuccess("Feedback request submitted successfully.");
+    } catch (error) {
+      setFeedbackError(
+        error instanceof Error
+          ? error.message
+          : "Unable to submit professor feedback."
+      );
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
   const resetCanvas = () => {
@@ -629,92 +720,8 @@ const deleteConnection = (id: string) => {
     }
   };
 
-  const validStudentEmail =
-    project.setup.students.find(
-      (student) =>
-        student.email.trim() &&
-        emailPattern.test(student.email.trim())
-    )?.email.trim() ?? "";
-
-  const professorInfo = {
-    name: project.setup.professorName.trim(),
-    email: project.setup.professorEmail.trim(),
-  };
-
-  const hasRequiredFeedbackMetadata =
-    Boolean(
-      project.setup.groupNumber.trim() &&
-        project.setup.courseName.trim() &&
-        project.setup.policyIssue.trim() &&
-        professorInfo.name &&
-        emailPattern.test(professorInfo.email) &&
-        validStudentEmail
-    );
-
-  const feedbackReadyToSubmit =
-    studentName.trim() &&
-    profQuestion.trim() &&
-    hasRequiredFeedbackMetadata;
-
-  const submitProfessorFeedback = async () => {
-    setFeedbackMessage("");
-    setFeedbackError("");
-
-    if (!feedbackReadyToSubmit) {
-      setFeedbackError(
-        "Complete all required feedback fields in Team Setup and this form before submitting."
-      );
-      return;
-    }
-
-    setIsSubmittingFeedback(true);
-
-    try {
-      const response = await fetch(
-        "/api/professor-feedback/submit",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            projectKey: project.setup.projectId,
-            studioId: config.studioId,
-            studioName: config.title,
-            groupNumber: project.setup.groupNumber.trim(),
-            courseName: project.setup.courseName.trim(),
-            policyIssue: project.setup.policyIssue.trim(),
-            submittedByName: studentName.trim(),
-            submittedByEmail: validStudentEmail,
-            professorName: professorInfo.name,
-            professorEmail: professorInfo.email,
-            question: profQuestion.trim(),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        setFeedbackError(data.error || "Unable to submit feedback.");
-      } else {
-        setFeedbackMessage(
-          "Professor feedback request submitted successfully."
-        );
-        setFeedbackSubmittedAt(new Date().toISOString());
-        saveProgress();
-      }
-    } catch (error) {
-      console.error("Professor feedback submit failed:", error);
-      setFeedbackError("Unable to submit feedback. Try again later.");
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
-
   const completedChecklist = config.checklist.filter((item) => checklistState[item]).length;
-
-  const selectedObjectConnections = selectedObject
+const selectedObjectConnections = selectedObject
   ? connections.filter(
       (connection) =>
         connection.fromId === selectedObject.id ||
@@ -951,13 +958,13 @@ const deleteConnection = (id: string) => {
           overflow: "auto",
           background: "#f8fafc",
           position: "relative",
-          cursor: panState.current.active ? "grabbing" : "default",
+          cursor: isPanning ? "grabbing" : "default",
         }}
         onWheel={(event) => {
           if (!event.ctrlKey) return;
           event.preventDefault();
 
-          setZoom((prev) => {
+          setZoom((prev: number) => {
             const direction = event.deltaY > 0 ? -0.08 : 0.08;
             const next = Math.min(2.2, Math.max(0.45, prev + direction));
             return Math.round(next * 100) / 100;
@@ -984,6 +991,7 @@ const deleteConnection = (id: string) => {
             scrollTop: workspace.scrollTop,
           };
 
+          setIsPanning(true);
           workspace.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
@@ -1002,6 +1010,7 @@ const deleteConnection = (id: string) => {
           if (!panState.current.active) return;
 
           panState.current.active = false;
+          setIsPanning(false);
 
           const workspace = workspaceRef.current;
           workspace?.releasePointerCapture(event.pointerId);
@@ -1146,7 +1155,7 @@ const deleteConnection = (id: string) => {
           type="button"
           className="button secondaryButton"
           onClick={() =>
-            setZoom((prev) => Math.max(0.5, Math.round((prev - 0.1) * 10) / 10))
+            setZoom((prev: number) => Math.max(0.5, Math.round((prev - 0.1) * 10) / 10))
           }
         >
           −
@@ -1160,7 +1169,7 @@ const deleteConnection = (id: string) => {
           type="button"
           className="button secondaryButton"
           onClick={() =>
-            setZoom((prev) => Math.min(2, Math.round((prev + 0.1) * 10) / 10))
+            setZoom((prev: number) => Math.min(2, Math.round((prev + 0.1) * 10) / 10))
           }
         >
           +
@@ -1422,86 +1431,61 @@ const deleteConnection = (id: string) => {
       </Panel>
 
       <Panel title="Professor Feedback">
-        <div className="panelHint" style={{ display: "grid", gap: 8 }}>
+        <div className="panelHint">
           <p className="fieldNote" style={{ marginBottom: 0 }}>
-            Use the Team Setup page to configure group details, professor contact, and policy issue.
+            Professor name and email are pulled from team setup.
           </p>
+          <strong>{project.setup.professorName || "Professor name not set"}</strong>
           <p className="fieldNote" style={{ marginBottom: 0 }}>
-            Feedback requests will be submitted for this studio only.
+            {project.setup.professorEmail || "Professor email not set"}
           </p>
         </div>
 
-        <label className="fieldLabel">
-          <span>Student name / Group</span>
-          <input
-            value={studentName}
-            onChange={(event) => setStudentName(event.target.value)}
-            placeholder="Student name or group"
-          />
-        </label>
+        <input
+          value={studentName}
+          onChange={(event) => setStudentName(event.target.value)}
+          placeholder="Your name or group"
+        />
 
-        <label className="fieldLabel">
-          <span>Professor question</span>
-          <textarea
-            rows={4}
-            value={profQuestion}
-            onChange={(event) => setProfQuestion(event.target.value)}
-            placeholder="Write your question for the professor..."
-          />
-        </label>
+        <input
+          value={feedbackEmail}
+          onChange={(event) => setFeedbackEmail(event.target.value)}
+          placeholder="Your email"
+          type="email"
+        />
 
-        <label className="fieldLabel">
-          <span>Professor feedback status</span>
-          <select
-            value={feedbackStatus}
-            onChange={(event) => setFeedbackStatus(event.target.value)}
-          >
-            <option>Not started</option>
-            <option>In progress</option>
-            <option>Resolved</option>
-          </select>
-        </label>
+        <textarea
+          rows={4}
+          value={profQuestion}
+          onChange={(event) => setProfQuestion(event.target.value)}
+          placeholder="Write your question for the professor..."
+        />
 
-        <div style={{ display: "grid", gap: 8 }}>
-          <div className="panelHint" style={{ display: "grid", gap: 4 }}>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              Professor: {professorInfo.name || "Not configured"}
-            </p>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              Contact: {professorInfo.email || "Not configured"}
-            </p>
-            <p className="fieldNote" style={{ marginBottom: 0 }}>
-              Submitter email: {validStudentEmail || "Enter student email on Team Setup"}
-            </p>
-          </div>
+        <select
+          value={feedbackStatus}
+          onChange={(event) => setFeedbackStatus(event.target.value)}
+        >
+          <option>Not started</option>
+          <option>In progress</option>
+          <option>Resolved</option>
+        </select>
 
-          <button
-            type="button"
-            className="button secondaryButton"
-            onClick={submitProfessorFeedback}
-            disabled={!feedbackReadyToSubmit || isSubmittingFeedback}
-          >
-            {isSubmittingFeedback ? "Submitting..." : "Submit Feedback Request"}
-          </button>
+        <button
+          type="button"
+          className="button secondaryButton"
+          onClick={submitProfessorFeedback}
+          disabled={isSubmittingFeedback}
+        >
+          {isSubmittingFeedback ? "Submitting..." : "Send feedback request"}
+        </button>
 
-          {feedbackMessage ? (
-            <div className="panelHint" style={{ color: "#166534" }}>
-              {feedbackMessage}
-            </div>
-          ) : null}
+        {feedbackError ? (
+          <p style={{ color: "#b91c1c", margin: 0 }}>{feedbackError}</p>
+        ) : null}
 
-          {feedbackError ? (
-            <div className="panelHint" style={{ color: "#b91c1c" }}>
-              {feedbackError}
-            </div>
-          ) : null}
-
-          {feedbackSubmittedAt ? (
-            <div className="panelHint" style={{ color: "#0f766e" }}>
-              Last submitted: {new Date(feedbackSubmittedAt).toLocaleString()}
-            </div>
-          ) : null}
-        </div>
+        {feedbackSuccess ? (
+          <p style={{ color: "#15803d", margin: 0 }}>{feedbackSuccess}</p>
+        ) : null}
       </Panel>
 
       <Panel title={`Checklist (${completedChecklist}/${config.checklist.length})`}>
@@ -1557,6 +1541,8 @@ const deleteConnection = (id: string) => {
       dashboardHref={config.dashboardHref}
       onSave={saveProgress}
       savedMessage={saved}
+      onAlert={handleStudioAlert}
+      alertLabel="Alert Admin"
       tools={toolsContent}
       workspace={workspaceContent}
       review={reviewContent}

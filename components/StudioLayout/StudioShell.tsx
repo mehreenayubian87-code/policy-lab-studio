@@ -14,6 +14,8 @@ type StudioShellProps = {
   tools: ReactNode;
   workspace: ReactNode;
   review: ReactNode;
+  onAlert?: () => void;
+  alertLabel?: string;
 };
 
 export default function StudioShell({
@@ -25,6 +27,8 @@ export default function StudioShell({
   tools,
   workspace,
   review,
+  onAlert,
+  alertLabel = "Alert Admin",
 }: StudioShellProps) {
   const [openPanel, setOpenPanel] = useState<"tools" | "review" | null>(null);
 
@@ -54,6 +58,12 @@ export default function StudioShell({
             <Link href={dashboardHref} className="button secondaryButton">
               Go to Dashboard
             </Link>
+
+            {onAlert ? (
+              <button type="button" className="button" onClick={onAlert}>
+                {alertLabel}
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
