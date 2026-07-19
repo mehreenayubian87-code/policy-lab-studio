@@ -1,97 +1,51 @@
 ﻿import Link from "next/link";
+import styles from "./page.module.css";
 
 export default function HomePage() {
   return (
-    <main
-      className="page"
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        gridTemplateRows: "1fr auto",
-        background: "#f7f4ec",
-      }}
-    >
-      <section
-        style={{
-          display: "grid",
-          placeItems: "center",
-          padding: "48px 24px",
-        }}
-      >
-        <div
-          className="panelCard"
-          style={{
-            width: "min(900px, 100%)",
-            padding: "56px 40px",
-            textAlign: "center",
-            display: "grid",
-            gap: 18,
-          }}
-        >
-          <div
-            className="fieldNote"
-            style={{
-              fontWeight: 900,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-            }}
-          >
-            POLICY LAB STUDIO
+    <main className={styles.landingPage}>
+      <section className={styles.hero}>
+        <div className={styles.heroPanel}>
+          <div className={styles.heroCopy}>
+            <div className={styles.kicker}>
+              POLICY LAB STUDIO
+            </div>
+
+            <h1>
+              Policy Lab Studio
+            </h1>
+
+            <p className={styles.subtitle}>
+              A guided workspace for developing evidence-informed policy solutions.
+            </p>
+
+            <div className={styles.actions}>
+              <Link href="/team-setup" className={styles.primaryAction}>
+                Register Team
+              </Link>
+
+              <Link href="/project-login" className={styles.secondaryAction}>
+                Team Login
+              </Link>
+
+              <Link href="/professor-admin" className={styles.secondaryAction}>
+                Admin Login
+              </Link>
+            </div>
           </div>
 
-          <h1
-            style={{
-              margin: 0,
-              color: "#0f2f66",
-              fontSize: "clamp(2.5rem, 6vw, 4.5rem)",
-              lineHeight: 1.05,
-            }}
-          >
-            Policy Lab Studio
-          </h1>
-
-          <p
-            className="hero-subtitle"
-            style={{
-              margin: "0 auto",
-              maxWidth: 700,
-            }}
-          >
-            A guided workspace for developing evidence-informed policy solutions.
-          </p>
-
-          <div
-            className="actionRow"
-            style={{
-              justifyContent: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 10,
-            }}
-          >
-            <Link href="/team-setup" className="button">
-              Register Team
-            </Link>
-
-            <Link href="/project-login" className="button secondaryButton">
-              Team Login
-            </Link>
-
-            <Link href="/professor-admin" className="button secondaryButton">
-              Admin Login
-            </Link>
+          <div className={styles.heroImageFrame}>
+            <img
+              src="/images/etok.jpeg"
+              alt="Policy Lab award recipient"
+              className={styles.heroImage}
+            />
           </div>
         </div>
+
       </section>
 
-      <footer
-        style={{
-          padding: "22px 24px 28px",
-          textAlign: "center",
-          color: "#475569",
-          lineHeight: 1.6,
-        }}
-      >
+      <footer className={styles.footer}>
         <div>
           Developed by <strong>Mehreen Afsar Jadoon (Student MGHP)</strong>
         </div>

@@ -55,25 +55,26 @@ export default function PolicyPortfolio() {
   };
 
   return (
-    <main className="page">
-      <section className={styles.hero}>
-        <div>
-          <div className={styles.kicker}>POLICY LAB STUDIO</div>
-          <h1>Policy Portfolio</h1>
-        </div>
+    <main className={styles.portfolioPage}>
+      <section className={styles.portfolioPanel}>
+        <header className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <div className={styles.kicker}>POLICY LAB STUDIO</div>
+            <h1>Policy Portfolio</h1>
+          </div>
 
-        <div className={styles.heroActions}>
-          <Link href="/presentation" className="button secondaryButton">
-            Back to Presentation Studio
-          </Link>
+          <div className={styles.heroActions}>
+            <Link href="/presentation" className="button secondaryButton">
+              Back to Presentation Studio
+            </Link>
 
-          <Link href="/dashboard" className="button secondaryButton">
-            Go to Dashboard
-          </Link>
-        </div>
-      </section>
+            <Link href="/dashboard" className="button secondaryButton">
+              Go to Dashboard
+            </Link>
+          </div>
+        </header>
 
-      <section id="portfolioContent" className={styles.portfolioSection}>
+        <section id="portfolioContent" className={styles.portfolioSection}>
         {!selectedCohort ? (
           <>
             <div className={styles.sectionHeading}>
@@ -162,17 +163,18 @@ export default function PolicyPortfolio() {
             )}
           </>
         )}
-      </section>
+        </section>
 
-      <section className={styles.closingNote}>
-        <div className={styles.closingAccent} />
-        <div>
-          <strong>Good luck with your policy project.</strong>
-          <p>
-            We look forward to seeing how you transform evidence, ideas, and
-            collaboration into a thoughtful policy solution.
-          </p>
-        </div>
+        <section className={styles.closingNote}>
+          <div className={styles.closingAccent} />
+          <div>
+            <strong>Good luck with your policy project.</strong>
+            <p>
+              We look forward to seeing how you transform evidence, ideas, and
+              collaboration into a thoughtful policy solution.
+            </p>
+          </div>
+        </section>
       </section>
 
       {selectedPoster ? (

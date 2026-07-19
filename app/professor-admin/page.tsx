@@ -13,6 +13,7 @@ import {
   loadProjectByNumber,
   saveProjectState,
 } from "@/components/ProjectState/projectStorage";
+import styles from "./page.module.css";
 
 type ProjectSummary = {
   projectNumber: string;
@@ -81,7 +82,13 @@ export default function ProfessorAdminPage() {
   const handleSelectProject = async (projectNumber: string) => {
     const project = await loadProjectByNumber(projectNumber);
     if (project) {
-      setSelectedProject(project);
+      setSelectedProject({
+        ...project,
+        setup: {
+          ...project.setup,
+          projectNumber,
+        },
+      });
     }
   };
 
@@ -114,21 +121,21 @@ export default function ProfessorAdminPage() {
   };
 
   return (
-    <main className="page">
-      <section className="panelCard" style={{ padding: 32, gap: 18 }}>
-        <div className="fieldNote" style={{ fontWeight: 800 }}>
-          PROFESSOR ADMIN
+    <main className={styles.adminPage}>
+      <section className={styles.adminCard}>
+        <div className={styles.headerBlock}>
+          <div className={styles.kicker}>PROFESSOR ADMIN</div>
+
+          <h1>Admin access</h1>
+
+          <p>
+            Sign in to view all registered projects and inspect project progress.
+          </p>
         </div>
 
-        <h1>Admin access</h1>
-
-        <p className="hero-subtitle">
-          Sign in to view all registered projects and inspect project progress.
-        </p>
-
         {!isAdminLoggedIn ? (
-          <form onSubmit={handleAdminLogin} style={{ display: "grid", gap: 14 }}>
-            <label className="fieldLabel">
+          <form onSubmit={handleAdminLogin} className={styles.formGrid}>
+            <label className={styles.fieldLabel}>
               <span>Username</span>
               <input
                 value={username}
@@ -137,7 +144,7 @@ export default function ProfessorAdminPage() {
               />
             </label>
 
-            <label className="fieldLabel">
+            <label className={styles.fieldLabel}>
               <span>Password</span>
               <input
                 type="password"
@@ -147,21 +154,21 @@ export default function ProfessorAdminPage() {
               />
             </label>
 
-            <button type="submit" className="button" disabled={isLoggingIn}>
+            <button type="submit" className={styles.primaryAction} disabled={isLoggingIn}>
               {isLoggingIn ? "Checking..." : "Login as admin"}
             </button>
 
             {error ? (
-              <p style={{ color: "#b91c1c", margin: 0 }}>{error}</p>
+              <p className={styles.errorText}>{error}</p>
             ) : null}
           </form>
         ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-              <h2 style={{ margin: 0 }}>Registered projects</h2>
+          <div className={styles.adminContent}>
+            <div className={styles.adminTopBar}>
+              <h2>Registered projects</h2>
               <button
                 type="button"
-                className="button secondaryButton"
+                className={styles.secondaryAction}
                 onClick={async () => {
                   await fetch("/api/professor-admin/login", {
                     method: "DELETE",
@@ -177,11 +184,11 @@ export default function ProfessorAdminPage() {
             </div>
 
             {isLoadingProjects ? (
-              <p className="fieldNote">Loading registered projects...</p>
+              <p className={styles.mutedText}>Loading registered projects...</p>
             ) : projects.length === 0 ? (
-              <p className="fieldNote">No registered projects yet.</p>
+              <p className={styles.mutedText}>No registered projects yet.</p>
             ) : (
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className={styles.projectList}>
                 {sortedProjects.map((project) => {
                   const hasAlerts = Boolean(project.alertCount && project.alertCount > 0);
 
@@ -189,18 +196,17 @@ export default function ProfessorAdminPage() {
                     <button
                       key={project.projectNumber}
                       type="button"
-                      className="panelHint"
-                      style={{ padding: 14, textAlign: "left", cursor: "pointer" }}
+                      className={styles.projectButton}
                       onClick={() => handleSelectProject(project.projectNumber)}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                        <div style={{ fontWeight: 700 }}>{project.projectNumber}</div>
-                        {hasAlerts ? <span aria-label="alert" style={{ fontSize: 18 }}>⚠️</span> : null}
+                      <div className={styles.projectButtonTop}>
+                        <div>{project.projectNumber}</div>
+                        {hasAlerts ? <span aria-label="alert">!</span> : null}
                       </div>
-                      <div className="fieldNote">
+                      <div className={styles.projectMeta}>
                         {project.courseName || "No course name"} • {project.groupNumber || "No group"}
                       </div>
-                      <div className="fieldNote">
+                      <div className={styles.projectMeta}>
                         Updated {new Date(project.updatedAt).toLocaleString()}
                       </div>
                     </button>
@@ -210,38 +216,38 @@ export default function ProfessorAdminPage() {
             )}
 
             {selectedProject ? (
-              <div className="panelCard" style={{ padding: 16 }}>
-                <h3 style={{ margin: "0 0 8px" }}>{selectedProject.setup.projectNumber}</h3>
-                <p style={{ margin: "0 0 8px" }}>
+              <div className={styles.detailCard}>
+                <h3>{selectedProject.setup.projectNumber}</h3>
+                <p>
                   <strong>Project title:</strong> {selectedProject.setup.policyIssue || "Untitled project"}
                 </p>
-                <p style={{ margin: "0 0 8px" }}>
+                <p>
                   <strong>Team lead:</strong> {selectedProject.setup.teamLead || "Not selected"}
                 </p>
 
-                <div style={{ display: "grid", gap: 6 }}>
+                <div className={styles.detailSection}>
                   <strong>Team members</strong>
                   {selectedProject.setup.students
                     .filter((student) => student.name.trim() || student.email.trim())
                     .map((student, index) => (
-                      <div key={`${student.name}-${index}`} className="fieldNote">
-                        {student.name || "Unnamed member"} — {student.email || "No email"}
+                      <div key={`${student.name}-${index}`} className={styles.mutedText}>
+                        {student.name || "Unnamed member"} - {student.email || "No email"}
                       </div>
                     ))}
                 </div>
 
-                <div style={{ marginTop: 12 }}>
+                <div className={styles.detailSection}>
                   <strong>Progress notes</strong>
                   {selectedProject.notes.length === 0 ? (
-                    <p className="fieldNote" style={{ marginTop: 6 }}>
+                    <p className={styles.mutedText}>
                       No notes yet.
                     </p>
                   ) : (
-                    <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                    <div className={styles.noteList}>
                       {selectedProject.notes.map((note) => (
-                        <div key={note.id} className="panelHint" style={{ padding: 10 }}>
-                          <div className="fieldNote" style={{ marginBottom: 4 }}>
-                            {note.createdBy} • {new Date(note.createdAt).toLocaleString()}
+                        <div key={note.id} className={styles.noteCard}>
+                          <div className={styles.noteMeta}>
+                            {note.createdBy} - {new Date(note.createdAt).toLocaleString()}
                           </div>
                           <div>{note.content}</div>
                         </div>
@@ -250,22 +256,22 @@ export default function ProfessorAdminPage() {
                   )}
                 </div>
 
-                <div style={{ marginTop: 12 }}>
+                <div className={styles.detailSection}>
                   <strong>Alert Details</strong>
                   {selectedProject.alerts.length === 0 ? (
-                    <p className="fieldNote" style={{ marginTop: 6 }}>
+                    <p className={styles.mutedText}>
                       No admin alerts yet.
                     </p>
                   ) : (
-                    <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                    <div className={styles.noteList}>
                       {selectedProject.alerts.map((alert) => (
-                        <div key={alert.id} className="panelHint" style={{ padding: 10 }}>
-                          <div className="fieldNote" style={{ marginBottom: 4 }}>
-                            {alert.studioName} • {new Date(alert.createdAt).toLocaleString()}
+                        <div key={alert.id} className={styles.noteCard}>
+                          <div className={styles.noteMeta}>
+                            {alert.studioName} - {new Date(alert.createdAt).toLocaleString()}
                           </div>
                           <div>{alert.message}</div>
                           {alert.note ? (
-                            <div style={{ marginTop: 6, fontWeight: 600 }}>{alert.note}</div>
+                            <div className={styles.noteStrong}>{alert.note}</div>
                           ) : null}
                         </div>
                       ))}
@@ -273,10 +279,10 @@ export default function ProfessorAdminPage() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
+                <div className={styles.actions}>
                   <button
                     type="button"
-                    className="button"
+                    className={styles.primaryAction}
                     onClick={handleOpenProject}
                   >
                     Go to project
@@ -284,7 +290,7 @@ export default function ProfessorAdminPage() {
 
                   <button
                     type="button"
-                    className="button secondaryButton"
+                    className={styles.secondaryAction}
                     onClick={() => setSelectedProject(null)}
                   >
                     Back to projects
@@ -292,7 +298,7 @@ export default function ProfessorAdminPage() {
 
                   <button
                     type="button"
-                    className="button secondaryButton"
+                    className={styles.secondaryAction}
                     onClick={handleDeleteProject}
                   >
                     Delete team
@@ -303,7 +309,7 @@ export default function ProfessorAdminPage() {
           </div>
         )}
 
-        <Link href="/" className="button secondaryButton">
+        <Link href="/" className={styles.secondaryAction}>
           Back home
         </Link>
       </section>

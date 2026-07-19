@@ -87,10 +87,10 @@ export default function PolicyObjectCard({
         width: object.width,
         height: object.height,
         background: object.color,
-        borderRadius: 18,
+        borderRadius: 10,
         padding: 14,
-        boxShadow: selected ? "0 0 0 3px rgba(15,47,102,0.35), 0 14px 30px rgba(15,23,42,0.16)" : "0 10px 22px rgba(15,23,42,0.12)",
-        border: selected ? "2px solid #0f2f66" : "1px solid rgba(15,23,42,0.12)",
+        boxShadow: selected ? "0 0 0 3px rgba(212,165,116,0.36), 0 14px 30px rgba(43,88,118,0.16)" : "0 10px 22px rgba(43,88,118,0.12)",
+        border: selected ? "2px solid #1e3a5f" : "1px solid rgba(43,88,118,0.14)",
         cursor: object.locked ? "default" : "grab",
         display: "grid",
         gridTemplateRows: "auto 1fr auto",
@@ -100,7 +100,7 @@ export default function PolicyObjectCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <strong style={{ color: "#0f2f66" }}>{object.icon ? `${object.icon} ` : null}{object.title}</strong>
+        <strong style={{ color: "#1e3a5f" }}>{object.icon ? `${object.icon} ` : null}{object.title}</strong>
         <div style={{ display: "flex", gap: 4 }}>
           <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDuplicate(object.id); }} style={miniButtonStyle} title="Duplicate">⧉</button>
           <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDelete(object.id); }} style={miniButtonStyle} title="Delete">×</button>
@@ -111,7 +111,7 @@ export default function PolicyObjectCard({
         value={object.content}
         onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => onUpdate(object.id, { content: event.target.value })}
-        style={{ width: "100%", height: "100%", resize: "none", border: "none", outline: "none", background: "transparent", color: "#0f172a", font: "inherit", lineHeight: 1.45 }}
+        style={{ width: "100%", height: "100%", resize: "none", border: "none", outline: "none", background: "transparent", color: "#2c3e50", font: "inherit", lineHeight: 1.45 }}
       />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -119,7 +119,7 @@ export default function PolicyObjectCard({
           value={object.color}
           onPointerDown={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate(object.id, { color: event.target.value })}
-          style={{ border: "1px solid rgba(15,47,102,0.15)", borderRadius: 999, padding: "4px 8px", background: "white", color: "#0f2f66", fontWeight: 700 }}
+          style={{ border: "1px solid rgba(43,88,118,0.16)", borderRadius: 999, padding: "4px 8px", background: "white", color: "#1e3a5f", fontWeight: 700 }}
         >
           <option value="#ffd6d6">Red</option>
           <option value="#dbeafe">Blue</option>
@@ -130,7 +130,7 @@ export default function PolicyObjectCard({
           <option value="#f8fafc">White</option>
         </select>
 
-        <button type="button" onPointerDown={startResize} style={{ border: "none", background: "rgba(15,47,102,0.08)", color: "#0f2f66", borderRadius: 8, width: 26, height: 26, cursor: "nwse-resize", fontWeight: 900 }} title="Resize">↘</button>
+        <button type="button" onPointerDown={startResize} style={{ border: "none", background: "rgba(212,165,116,0.22)", color: "#1e3a5f", borderRadius: 8, width: 26, height: 26, cursor: "nwse-resize", fontWeight: 900 }} title="Resize">↘</button>
       </div>
     </div>
   );
@@ -138,8 +138,8 @@ export default function PolicyObjectCard({
 
 const miniButtonStyle: CSSProperties = {
   border: "none",
-  background: "rgba(255,255,255,0.75)",
-  color: "#0f2f66",
+  background: "rgba(255,248,231,0.85)",
+  color: "#1e3a5f",
   borderRadius: 8,
   width: 24,
   height: 24,

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import styles from "./page.module.css";
 import type {
   ProjectStudent,
   ProjectState,
@@ -93,7 +94,7 @@ export default function TeamSetupPage() {
       const saved = await saveProjectState(project);
       if (!saved) {
         setSaveError(
-          "Team was saved in this browser, but Supabase did not confirm the save."
+          "Team registration was not saved to Supabase. Please check the database connection and try again."
         );
         return;
       }
@@ -114,51 +115,62 @@ export default function TeamSetupPage() {
   }
 
   return (
-    <main className="page">
-      <section className="panelCard" style={{ padding: 28 }}>
-        <div className="fieldNote" style={{ fontWeight: 800 }}>POLICY LAB STUDIO</div>
-        <h1 style={{ marginBottom: 4 }}>Team Setup</h1>
-        <p className="hero-subtitle">Register a team by creating a project number and password.</p>
+    <main className={styles.registrationPage}>
+      <section className={styles.registrationCard}>
+        <div className={styles.headerBlock}>
+          <div className={styles.kicker}>POLICY LAB STUDIO</div>
+          <h1>Team Setup</h1>
+          <p>Register a team by creating a project number and password.</p>
+        </div>
 
         {!submitted ? (
-          <div style={{ display: "grid", gap: 16, marginTop: 18 }}>
-            <label className="fieldLabel">
-              <span>Project number</span>
-              <input value={projectNumber} onChange={(e) => setProjectNumber(e.target.value)} placeholder="e.g. TEAM-1234" />
-            </label>
-
-            <label className="fieldLabel">
-              <span>Project password</span>
-              <input type="password" value={projectPassword} onChange={(e) => setProjectPassword(e.target.value)} placeholder="At least 6 characters" />
-            </label>
-
-            <label className="fieldLabel">
-              <span>Project title</span>
-              <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} placeholder="Short project title" />
-            </label>
-
-            <div className="panelCard" style={{ padding: 12 }}>
-              <div className="panelHeader">
-                <h2 style={{ margin: 0 }}>Team Members</h2>
-                <p className="fieldNote">Enter names and emails for at least two members.</p>
+          <div className={styles.formGrid}>
+            <div className={styles.projectCard}>
+              <div className={styles.memberHeader}>
+                <h2>Project Details</h2>
+                <p>Create the team login credentials and name the policy project.</p>
               </div>
 
-              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              <div className={styles.projectFields}>
+                <label className={styles.fieldLabel}>
+                  <span>Project number</span>
+                  <input value={projectNumber} onChange={(e) => setProjectNumber(e.target.value)} placeholder="e.g. TEAM-1234" />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  <span>Project password</span>
+                  <input type="password" value={projectPassword} onChange={(e) => setProjectPassword(e.target.value)} placeholder="At least 6 characters" />
+                </label>
+
+                <label className={`${styles.fieldLabel} ${styles.titleField}`}>
+                  <span>Project title</span>
+                  <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} placeholder="Short project title or policy issue sentence" />
+                </label>
+              </div>
+            </div>
+
+            <div className={styles.memberCard}>
+              <div className={styles.memberHeader}>
+                <h2>Team Members</h2>
+                <p>Enter names and emails for at least two members.</p>
+              </div>
+
+              <div className={styles.memberList}>
                 {students.map((student, index) => (
-                  <div key={index} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div key={index} className={styles.memberRow}>
                     <input value={student.name} onChange={(e) => updateStudent(index, "name", e.target.value)} placeholder={`Student ${index + 1} name`} />
                     <input value={student.email} onChange={(e) => updateStudent(index, "email", e.target.value)} placeholder={`Student ${index + 1} email`} />
                     {students.length > 2 ? (
-                      <button type="button" className="button secondaryButton" onClick={() => removeStudent(index)}>Remove</button>
+                      <button type="button" className={styles.secondaryAction} onClick={() => removeStudent(index)}>Remove</button>
                     ) : null}
                   </div>
                 ))}
 
                 <div>
-                  <button type="button" className="button" onClick={addStudent} disabled={students.length >= 5}>Add member</button>
+                  <button type="button" className={styles.primaryAction} onClick={addStudent} disabled={students.length >= 5}>Add member</button>
                 </div>
 
-                <label className="fieldLabel">
+                <label className={styles.fieldLabel}>
                   <span>Project lead</span>
                   <select value={teamLead} onChange={(e) => setTeamLead(e.target.value)}>
                     <option value="">Select a lead</option>
@@ -172,23 +184,23 @@ export default function TeamSetupPage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12 }}>
-              <button type="button" className="button" onClick={handleSubmit} disabled={!canSubmit || isSaving}>{isSaving ? "Saving..." : "Register Team"}</button>
-              <Link href="/" className="button secondaryButton">Cancel</Link>
+            <div className={styles.finalActions}>
+              <button type="button" className={styles.primaryAction} onClick={handleSubmit} disabled={!canSubmit || isSaving}>{isSaving ? "Saving..." : "Register Team"}</button>
+              <Link href="/" className={styles.primaryAction}>Cancel</Link>
             </div>
 
             {saveError ? (
-              <p style={{ color: "#b91c1c", margin: 0 }}>{saveError}</p>
+              <p className={styles.errorText}>{saveError}</p>
             ) : null}
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
-            <div className="fieldNote" style={{ fontWeight: 700 }}>Team registered successfully.</div>
+          <div className={styles.successPanel}>
+            <div className={styles.successText}>Team registered successfully.</div>
 
-            <div style={{ display: "flex", gap: 12 }}>
-              <Link href="/project-login" className="button">Team Login</Link>
-              <button type="button" className="button secondaryButton" onClick={() => clearForm()}>Register another team</button>
-              <Link href="/dashboard" className="button secondaryButton">Continue to Dashboard</Link>
+            <div className={styles.actions}>
+              <Link href="/project-login" className={styles.primaryAction}>Team Login</Link>
+              <button type="button" className={styles.secondaryAction} onClick={() => clearForm()}>Register another team</button>
+              <Link href="/" className={styles.secondaryAction}>Go to home</Link>
             </div>
           </div>
         )}

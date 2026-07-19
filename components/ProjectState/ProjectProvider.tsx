@@ -205,6 +205,14 @@ function normalizeSetup(value: unknown): ProjectSetup {
   };
 }
 
+function areJsonValuesEqual(left: unknown, right: unknown) {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
 export function ProjectProvider({
   children,
 }: {
@@ -215,14 +223,67 @@ export function ProjectProvider({
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
+    const hydrateProject = async () => {
+      try {
       const raw = localStorage.getItem(STORAGE_KEY);
 
       if (raw) {
         const parsed = JSON.parse(raw);
+        const parsedSetup = normalizeSetup(parsed.setup);
+
+        if (parsedSetup.projectNumber.trim() && parsedSetup.projectPassword) {
+          try {
+            const response = await fetch(
+              `/api/projects/${encodeURIComponent(parsedSetup.projectNumber.trim())}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  password: parsedSetup.projectPassword,
+                }),
+              }
+            );
+            const data = (await response.json().catch(() => null)) as {
+              ok?: boolean;
+              project?: ProjectState;
+            } | null;
+
+            if (response.ok && data?.project) {
+              setProject({
+                ...data.project,
+                setup: normalizeSetup(data.project.setup),
+                objects: Array.isArray(data.project.objects)
+                  ? data.project.objects
+                  : [],
+                studioStates:
+                  data.project.studioStates && typeof data.project.studioStates === "object"
+                    ? data.project.studioStates
+                    : {},
+                notes: Array.isArray(data.project.notes)
+                  ? data.project.notes
+                  : [],
+                alerts: normalizeAlerts(data.project.alerts),
+                updatedAt:
+                  typeof data.project.updatedAt === "string"
+                    ? data.project.updatedAt
+                    : null,
+              });
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.project));
+              return;
+            }
+          } catch (error) {
+            console.error("Unable to refresh active project from Supabase:", error);
+          }
+
+          localStorage.removeItem(STORAGE_KEY);
+          setProject(initialProject);
+          return;
+        }
 
         setProject({
-          setup: normalizeSetup(parsed.setup),
+          setup: parsedSetup,
           objects: Array.isArray(parsed.objects)
             ? parsed.objects
             : [],
@@ -265,6 +326,10 @@ export function ProjectProvider({
     } finally {
       setHydrated(true);
     }
+
+    };
+
+    void hydrateProject();
   }, []);
 
   useEffect(() => {
@@ -411,14 +476,20 @@ export function ProjectProvider({
   };
 
   const updateStudioState = useCallback((studioId: string, state: unknown) => {
-    setProject((previous) => ({
-      ...previous,
-      studioStates: {
-        ...previous.studioStates,
-        [studioId]: state,
-      },
-      updatedAt: new Date().toISOString(),
-    }));
+    setProject((previous) => {
+      if (areJsonValuesEqual(previous.studioStates[studioId], state)) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        studioStates: {
+          ...previous.studioStates,
+          [studioId]: state,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    });
   }, []);
 
   const appendAlert = (

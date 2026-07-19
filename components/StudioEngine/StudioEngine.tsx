@@ -4,6 +4,7 @@ import StudioResources from "@/components/ResourceHub/StudioResources";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import StudioShell from "@/components/StudioLayout/StudioShell";
+import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
 import type {
   ObjectType,
   StudioConfig,
@@ -14,8 +15,6 @@ import { objectPresets } from "./objectPresets";
 import IconLibrary from "./IconLibrary";
 import StudioObjectCard from "./StudioObjectCard";
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function buildId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -24,48 +23,29 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const SNAP_SIZE = 28;
   const WORKSPACE_WIDTH = 6000;
   const WORKSPACE_HEIGHT = 4200;
+  const { project, appendAlert, updateStudioState } = useProject();
+  const projectScopedStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    config.storageKey
+  );
 
   const snapToGrid = (value: number) => Math.round(value / SNAP_SIZE) * SNAP_SIZE;
 
-  const buildGuidanceCards = () =>
-    config.guidanceCards.map((card, index): StudioObject => {
-      const type = card.objectType ?? "sticky";
-      const preset = objectPresets[type];
-
-      return {
-        id: buildId(`guidance-${index}`),
-        ...preset,
-        type,
-        title: card.title,
-        content: card.prompt,
-        x: snapToGrid(60 + (index % 2) * 520),
-        y: snapToGrid(70 + Math.floor(index / 2) * 260),
-        width: type === "sticky" ? 340 : preset.width,
-        height: type === "sticky" ? 180 : preset.height,
-        createdIn: config.studioId,
-      };
-    });
-
   const loadInitialStudioState = () => {
-    const defaultGuidanceCards = config.studioId === "problem" ? buildGuidanceCards() : [];
     const fallback = {
-      objects: defaultGuidanceCards,
+      objects: [] as StudioObject[],
       connections: [] as StudioConnection[],
       zoom: 1,
       checklistState: {} as Record<string, boolean>,
-      studentName: "",
-      feedbackEmail: "",
-      profQuestion: "",
-      feedbackStatus: "Not started",
-      selectedId: defaultGuidanceCards[0]?.id ?? null,
+      selectedId: null as string | null,
     };
 
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !projectScopedStorageKey) {
       return fallback;
     }
 
     try {
-      const raw = localStorage.getItem(config.storageKey);
+      const raw = localStorage.getItem(projectScopedStorageKey);
       if (!raw) return fallback;
 
       const data = JSON.parse(raw);
@@ -75,10 +55,6 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
         connections: Array.isArray(data.connections) ? data.connections : fallback.connections,
         zoom: typeof data.zoom === "number" ? data.zoom : fallback.zoom,
         checklistState: data.checklistState ?? fallback.checklistState,
-        studentName: typeof data.studentName === "string" ? data.studentName : fallback.studentName,
-        feedbackEmail: typeof data.feedbackEmail === "string" ? data.feedbackEmail : fallback.feedbackEmail,
-        profQuestion: typeof data.profQuestion === "string" ? data.profQuestion : fallback.profQuestion,
-        feedbackStatus: typeof data.feedbackStatus === "string" ? data.feedbackStatus : fallback.feedbackStatus,
         selectedId: Array.isArray(data.objects) ? data.objects[0]?.id ?? null : fallback.selectedId,
       };
     } catch (error) {
@@ -96,18 +72,10 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [zoom, setZoom] = useState(initialStudioState.zoom);
   const [saved, setSaved] = useState("");
-  const [studentName, setStudentName] = useState(initialStudioState.studentName);
-  const [feedbackEmail, setFeedbackEmail] = useState(initialStudioState.feedbackEmail);
-  const [profQuestion, setProfQuestion] = useState(initialStudioState.profQuestion);
-  const [feedbackStatus, setFeedbackStatus] = useState(initialStudioState.feedbackStatus);
-  const [feedbackError, setFeedbackError] = useState("");
-  const [feedbackSuccess, setFeedbackSuccess] = useState("");
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [chartTitle, setChartTitle] = useState("Chart / Graph");
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
   const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
-  const { project, appendAlert, updateStudioState } = useProject();
-  const hydratedFromProject = useRef(false);
+  const hydratedProjectKey = useRef("");
   const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>(initialStudioState.checklistState);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -130,20 +98,26 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   );
 
   useEffect(() => {
-    if (hydratedFromProject.current) return;
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current === projectKey) return;
 
     const storedState = project.studioStates?.[config.studioId];
-    if (!storedState || typeof storedState !== "object") return;
+    if (!storedState || typeof storedState !== "object") {
+      setObjects([]);
+      setConnections([]);
+      setSelectedId(null);
+      setSelectedIds([]);
+      setZoom(1);
+      setChecklistState({});
+      hydratedProjectKey.current = projectKey;
+      return;
+    }
 
     const data = storedState as {
       objects?: StudioObject[];
       connections?: StudioConnection[];
       zoom?: number;
       checklistState?: Record<string, boolean>;
-      studentName?: string;
-      feedbackEmail?: string;
-      profQuestion?: string;
-      feedbackStatus?: string;
     };
 
     if (Array.isArray(data.objects)) {
@@ -155,13 +129,9 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
     if (data.checklistState && typeof data.checklistState === "object") {
       setChecklistState(data.checklistState);
     }
-    if (typeof data.studentName === "string") setStudentName(data.studentName);
-    if (typeof data.feedbackEmail === "string") setFeedbackEmail(data.feedbackEmail);
-    if (typeof data.profQuestion === "string") setProfQuestion(data.profQuestion);
-    if (typeof data.feedbackStatus === "string") setFeedbackStatus(data.feedbackStatus);
 
-    hydratedFromProject.current = true;
-  }, [config.studioId, project.studioStates]);
+    hydratedProjectKey.current = projectKey;
+  }, [config.studioId, project.setup.projectNumber, project.studioStates]);
 
   const handleSelectObject = (id: string, multiSelect: boolean) => {
   setSelectedId(id);
@@ -307,29 +277,6 @@ const distributeSelected = (direction: "horizontal" | "vertical") => {
     setSelectedId(object.id);
   };
 
-  const createGuidanceCards = () => {
-    const cards = config.guidanceCards.map((card, index): StudioObject => {
-      const type = card.objectType ?? "sticky";
-      const preset = objectPresets[type];
-
-      return {
-        id: buildId(`guidance-${index}`),
-        ...preset,
-        type,
-        title: card.title,
-        content: card.prompt,
-        x: snapToGrid(60 + (index % 2) * 520),
-        y: snapToGrid(70 + Math.floor(index / 2) * 260),
-        width: type === "sticky" ? 340 : preset.width,
-        height: type === "sticky" ? 180 : preset.height,
-        createdIn: config.studioId,
-      };
-    });
-
-    setObjects(cards);
-    setSelectedId(cards[0]?.id ?? null);
-  };
-
   const updateObject = (id: string, changes: Partial<StudioObject>) => {
     setObjects((prev) =>
       prev.map((object) => (object.id === id ? { ...object, ...changes } : object))
@@ -419,20 +366,18 @@ const deleteConnection = (id: string) => {
 
 
   const saveProgress = () => {
-    localStorage.setItem(
-      config.storageKey,
-      JSON.stringify({
+    if (projectScopedStorageKey) {
+      localStorage.setItem(
+        projectScopedStorageKey,
+        JSON.stringify({
         objects,
         connections,
         zoom,
         checklistState,
-        studentName,
-        feedbackEmail,
-        profQuestion,
-        feedbackStatus,
         savedAt: new Date().toISOString(),
-      })
-    );
+        })
+      );
+    }
 
     setSaved("Progress saved.");
     setTimeout(() => setSaved(""), 2000);
@@ -444,14 +389,12 @@ const deleteConnection = (id: string) => {
       connections,
       zoom,
       checklistState,
-      studentName,
-      feedbackEmail,
-      profQuestion,
-      feedbackStatus,
       savedAt: new Date().toISOString(),
     };
 
-    localStorage.setItem(config.storageKey, JSON.stringify(studioState));
+    if (projectScopedStorageKey) {
+      localStorage.setItem(projectScopedStorageKey, JSON.stringify(studioState));
+    }
 
     const timer = window.setTimeout(() => {
       updateStudioState(config.studioId, studioState);
@@ -463,11 +406,7 @@ const deleteConnection = (id: string) => {
     connections,
     zoom,
     checklistState,
-    studentName,
-    feedbackEmail,
-    profQuestion,
-    feedbackStatus,
-    config.storageKey,
+    projectScopedStorageKey,
     config.studioId,
     updateStudioState,
   ]);
@@ -480,80 +419,14 @@ const deleteConnection = (id: string) => {
     setTimeout(() => setSaved(""), 2200);
   };
 
-  const submitProfessorFeedback = async () => {
-    setFeedbackError("");
-    setFeedbackSuccess("");
-
-    if (!project.setup.groupNumber.trim() || !project.setup.courseName.trim() || !project.setup.policyIssue.trim() || !project.setup.professorName.trim() || !project.setup.professorEmail.trim()) {
-      setFeedbackError(
-        "Complete your team setup information before requesting professor feedback."
-      );
-      return;
-    }
-
-    if (!studentName.trim()) {
-      setFeedbackError("Enter your student or group name before submitting.");
-      return;
-    }
-
-    if (!feedbackEmail.trim() || !emailPattern.test(feedbackEmail.trim())) {
-      setFeedbackError("Enter a valid student email before submitting.");
-      return;
-    }
-
-    if (!profQuestion.trim()) {
-      setFeedbackError("Write a question for your professor before submitting.");
-      return;
-    }
-
-    setIsSubmittingFeedback(true);
-
-    try {
-      const response = await fetch("/api/professor-feedback/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          projectKey: project.setup.projectId,
-          studioId: config.studioId,
-          studioName: config.title,
-          groupNumber: project.setup.groupNumber.trim(),
-          courseName: project.setup.courseName.trim(),
-          policyIssue: project.setup.policyIssue.trim(),
-          submittedByName: studentName.trim(),
-          submittedByEmail: feedbackEmail.trim(),
-          professorName: project.setup.professorName.trim(),
-          professorEmail: project.setup.professorEmail.trim(),
-          question: profQuestion.trim(),
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Unable to submit feedback.");
-      }
-
-      setFeedbackSuccess("Feedback request submitted successfully.");
-    } catch (error) {
-      setFeedbackError(
-        error instanceof Error
-          ? error.message
-          : "Unable to submit professor feedback."
-      );
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
-
   const resetCanvas = () => {
-    localStorage.removeItem(config.storageKey);
+    if (projectScopedStorageKey) {
+      localStorage.removeItem(projectScopedStorageKey);
+    }
     setObjects([]);
     setConnections([]);
     setSelectedId(null);
     setZoom(1);
-    setTimeout(createGuidanceCards, 0);
   };
 
 
@@ -801,7 +674,6 @@ const selectedObjectConnections = selectedObject
     <>
       <div className="panelHeader">
         <h3>Tools</h3>
-        <p className="fieldNote">Add objects, visuals, icons, and arrange the workspace.</p>
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -821,7 +693,7 @@ const selectedObjectConnections = selectedObject
                 style={{
                   border: "none",
                   background: "transparent",
-                  color: "#0f2f66",
+                  color: "var(--hikma-blue-dark)",
                   fontWeight: 900,
                   cursor: "pointer",
                   padding: 0,
@@ -842,7 +714,7 @@ const selectedObjectConnections = selectedObject
                       onClick={() => addObject(tool.type)}
                       style={{
                         justifyContent: "flex-start",
-                        padding: "8px 10px",
+                        padding: "7px 9px",
                         width: "100%",
                       }}
                     >
@@ -884,10 +756,6 @@ const selectedObjectConnections = selectedObject
 
         <div className="panelHint" style={{ padding: 10 }}>
           <strong>Visual Builder</strong>
-          <p className="fieldNote">
-            Upload visuals, build simple charts, or copy icons into cards.
-          </p>
-
           <label className="button secondaryButton" style={{ cursor: "pointer", justifyContent: "center" }}>
             + Upload Image / Screenshot
             <input
@@ -984,7 +852,6 @@ const selectedObjectConnections = selectedObject
 
         <div className="panelHint" style={{ padding: 10 }}>
           <strong>Icon Library</strong>
-          <p className="fieldNote">Choose an icon to copy, then paste it into any selected card.</p>
           <IconLibrary onAddIcon={copyIconToClipboard} />
         </div>
       </div>
@@ -993,7 +860,7 @@ const selectedObjectConnections = selectedObject
 
   const workspaceContent = (
     <section
-      className="panelCard"
+      className="panelCard studioWorkspaceCard"
       style={{
         padding: 0,
         overflow: "hidden",
@@ -1004,17 +871,15 @@ const selectedObjectConnections = selectedObject
       }}
     >
       <div
-        className="panelHeader"
+        className="panelHeader studioWorkspaceHeader"
         style={{
-          padding: 12,
-          borderBottom: "1px solid rgba(15, 47, 102, 0.12)",
           marginBottom: 0,
         }}
       >
         <div>
           <h2>Policy Workspace</h2>
           <p className="fieldNote">
-            Drag, resize, duplicate, delete, recolor, zoom, arrange, and save objects.
+            {objects.length} objects • {connections.length} connections • {selectedIds.length} selected
           </p>
         </div>
       </div>
@@ -1025,10 +890,10 @@ const selectedObjectConnections = selectedObject
           flex: 1,
           minHeight: 0,
           overflow: "auto",
-          background: "#f8fafc",
           position: "relative",
           cursor: isPanning ? "grabbing" : "default",
         }}
+        className="studioCanvasSurface"
         onWheel={(event) => {
           if (!event.ctrlKey) return;
           event.preventDefault();
@@ -1098,8 +963,8 @@ const selectedObjectConnections = selectedObject
             transform: `scale(${zoom})`,
             transformOrigin: "0 0",
             position: "relative",
-            background:
-              "linear-gradient(rgba(15,47,102,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,47,102,0.05) 1px, transparent 1px)",
+            backgroundImage:
+              "linear-gradient(rgba(43,88,118,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(43,88,118,0.06) 1px, transparent 1px)",
             backgroundSize: "28px 28px",
           }}
         >
@@ -1124,7 +989,7 @@ const selectedObjectConnections = selectedObject
                 orient="auto"
                 markerUnits="strokeWidth"
               >
-                <path d="M0,0 L0,6 L9,3 z" fill="#0f2f66" />
+                <path d="M0,0 L0,6 L9,3 z" fill="#1e3a5f" />
               </marker>
             </defs>
 
@@ -1146,7 +1011,7 @@ const selectedObjectConnections = selectedObject
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    stroke="#0f2f66"
+                    stroke="#1e3a5f"
                     strokeWidth="3"
                     markerEnd="url(#arrow)"
                     opacity="0.75"
@@ -1155,7 +1020,7 @@ const selectedObjectConnections = selectedObject
                   <text
                     x={(x1 + x2) / 2}
                     y={(y1 + y2) / 2 - 10}
-                    fill="#0f2f66"
+                    fill="#1e3a5f"
                     fontSize="13"
                     fontWeight="700"
                     textAnchor="middle"
@@ -1189,17 +1054,7 @@ const selectedObjectConnections = selectedObject
         </div>
       </div>
 
-      <div
-        style={{
-          padding: 10,
-          borderTop: "1px solid rgba(15,47,102,0.12)",
-          display: "flex",
-          justifyContent: "flex-start",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 8,
-        }}
-      >
+      <div className="studioToolbar">
         <button type="button" className="button secondaryButton" onClick={arrangeObjects}>
           Arrange
         </button>
@@ -1248,7 +1103,7 @@ const selectedObjectConnections = selectedObject
           Reset
         </button>
 
-        <button type="button" className="button" onClick={saveProgress}>
+        <button type="button" className="button saveProgressButton" onClick={saveProgress}>
           Save Progress
         </button>
       </div>
@@ -1497,64 +1352,6 @@ const selectedObjectConnections = selectedObject
         <div className="panelHint">
           Please confirm important decisions with your professor.
         </div>
-      </Panel>
-
-      <Panel title="Professor Feedback">
-        <div className="panelHint">
-          <p className="fieldNote" style={{ marginBottom: 0 }}>
-            Professor name and email are pulled from team setup.
-          </p>
-          <strong>{project.setup.professorName || "Professor name not set"}</strong>
-          <p className="fieldNote" style={{ marginBottom: 0 }}>
-            {project.setup.professorEmail || "Professor email not set"}
-          </p>
-        </div>
-
-        <input
-          value={studentName}
-          onChange={(event) => setStudentName(event.target.value)}
-          placeholder="Your name or group"
-        />
-
-        <input
-          value={feedbackEmail}
-          onChange={(event) => setFeedbackEmail(event.target.value)}
-          placeholder="Your email"
-          type="email"
-        />
-
-        <textarea
-          rows={4}
-          value={profQuestion}
-          onChange={(event) => setProfQuestion(event.target.value)}
-          placeholder="Write your question for the professor..."
-        />
-
-        <select
-          value={feedbackStatus}
-          onChange={(event) => setFeedbackStatus(event.target.value)}
-        >
-          <option>Not started</option>
-          <option>In progress</option>
-          <option>Resolved</option>
-        </select>
-
-        <button
-          type="button"
-          className="button secondaryButton"
-          onClick={submitProfessorFeedback}
-          disabled={isSubmittingFeedback}
-        >
-          {isSubmittingFeedback ? "Submitting..." : "Send feedback request"}
-        </button>
-
-        {feedbackError ? (
-          <p style={{ color: "#b91c1c", margin: 0 }}>{feedbackError}</p>
-        ) : null}
-
-        {feedbackSuccess ? (
-          <p style={{ color: "#15803d", margin: 0 }}>{feedbackSuccess}</p>
-        ) : null}
       </Panel>
 
       <Panel title={`Checklist (${completedChecklist}/${config.checklist.length})`}>

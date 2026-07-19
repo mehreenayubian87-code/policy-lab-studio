@@ -1,4 +1,4 @@
-import type { ProjectObject, ProjectStudioId } from "./ProjectProvider";
+import type { ProjectObject, ProjectState, ProjectStudioId } from "./ProjectProvider";
 
 type StoredStudioObject = {
   id: string;
@@ -52,6 +52,31 @@ export function readAllStudioObjects(): ProjectObject[] {
     ...readStudioObjects("solution"),
     ...readStudioObjects("implementation"),
   ];
+}
+
+export function readAllStudioObjectsFromProject(project: ProjectState): ProjectObject[] {
+  const studioIds: Array<Exclude<ProjectStudioId, "poster">> = [
+    "problem",
+    "process",
+    "solution",
+    "implementation",
+  ];
+
+  return studioIds.flatMap((studioId) => {
+    const state = project.studioStates?.[studioId];
+    const objects: StoredStudioObject[] =
+      state && typeof state === "object" && Array.isArray((state as StoredStudioState).objects)
+        ? (state as StoredStudioState).objects ?? []
+        : [];
+
+    return objects.map((object) => ({
+      id: object.id,
+      title: object.title,
+      type: object.type,
+      content: object.content ?? "",
+      studioId,
+    }));
+  });
 }
 
 export function getObjectsByStudio(

@@ -25,7 +25,7 @@ type ProjectIndexEntry = {
 
 type ProjectIndex = Record<string, ProjectIndexEntry>;
 
-function normalizeProjectNumber(value: string) {
+export function normalizeProjectNumber(value: string) {
   return value.trim().toUpperCase();
 }
 
@@ -78,6 +78,37 @@ function getStorageKey(projectNumber: string) {
   )}`;
 }
 
+export function getProjectStudioStorageKey(
+  projectNumber: string,
+  studioStorageKey: string
+) {
+  const normalizedProjectNumber = normalizeProjectNumber(projectNumber);
+
+  if (!normalizedProjectNumber) return "";
+
+  return `${PROJECT_STORAGE_PREFIX}${normalizedProjectNumber}_${studioStorageKey}`;
+}
+
+function removeProjectScopedStorage(projectNumber: string) {
+  const normalized = normalizeProjectNumber(projectNumber);
+  const storagePrefix = `${PROJECT_STORAGE_PREFIX}${normalized}_`;
+
+  try {
+    const keysToRemove: string[] = [];
+
+    for (let indexPosition = 0; indexPosition < localStorage.length; indexPosition += 1) {
+      const storageKey = localStorage.key(indexPosition);
+      if (storageKey?.startsWith(storagePrefix)) {
+        keysToRemove.push(storageKey);
+      }
+    }
+
+    keysToRemove.forEach((storageKey) => localStorage.removeItem(storageKey));
+  } catch (error) {
+    console.error("Unable to remove scoped project storage:", error);
+  }
+}
+
 function buildProjectIndexEntry(project: ProjectState): ProjectIndexEntry {
   return {
     passwordHash: hashPassword(project.setup.projectPassword || ""),
@@ -120,9 +151,13 @@ export function buildProjectSnapshot(project: ProjectState): ProjectState {
   const studioStates = {
     ...project.studioStates,
   };
+  const projectNumber = project.setup.projectNumber;
 
   for (const [studioId, storageKey] of Object.entries(STUDIO_STORAGE_KEYS)) {
-    const storedState = readStoredJson(storageKey);
+    const projectStorageKey = getProjectStudioStorageKey(projectNumber, storageKey);
+    if (!projectStorageKey) continue;
+
+    const storedState = readStoredJson(projectStorageKey);
     if (storedState) {
       studioStates[studioId] = storedState;
     }
@@ -206,33 +241,6 @@ export async function saveProjectState(project: ProjectState) {
 
   if (!projectNumber) return false;
 
-  const passwordHash = hashPassword(
-    projectSnapshot.setup.projectPassword || ""
-  );
-  const index = loadProjectIndex();
-
-  const entry: ProjectIndexEntry = buildProjectIndexEntry({
-    ...projectSnapshot,
-    updatedAt: new Date().toISOString(),
-  });
-
-  entry.passwordHash = passwordHash;
-  entry.alertCount = Array.isArray(projectSnapshot.alerts)
-    ? projectSnapshot.alerts.length
-    : 0;
-
-  index[projectNumber] = entry;
-  saveProjectIndex(index);
-
-  try {
-    localStorage.setItem(
-        getStorageKey(projectNumber),
-        JSON.stringify(projectSnapshot)
-    );
-  } catch (error) {
-    console.error("Unable to save project:", error);
-  }
-
   try {
     const response = await fetch("/api/projects", {
       method: "POST",
@@ -247,14 +255,15 @@ export async function saveProjectState(project: ProjectState) {
       project?: ProjectState;
     }>(response);
 
-    if (data?.project) {
+    if (data?.ok && data.project) {
       localStorage.setItem(
         getStorageKey(projectNumber),
         JSON.stringify(data.project)
       );
+      return true;
     }
 
-    return Boolean(data?.ok);
+    return false;
   } catch (error) {
     console.error("Unable to save project to Supabase:", error);
     return false;
@@ -267,7 +276,7 @@ export async function loadProjectByNumber(projectNumber: string) {
 
   try {
     const response = await fetch(
-      `/api/professor-admin/projects/${encodeURIComponent(normalized)}`
+      `/api/professor-admin/projects/${encodeURIComponent(projectNumber.trim())}`
     );
     const data = await readJsonResponse<{
       ok: boolean;
@@ -285,12 +294,7 @@ export async function loadProjectByNumber(projectNumber: string) {
     console.error("Unable to load project from Supabase:", error);
   }
 
-  try {
-    return readStoredProject(getStorageKey(normalized));
-  } catch (error) {
-    console.error("Unable to load project for number:", error);
-    return null;
-  }
+  return null;
 }
 
 export async function loadProjectByNumberAndPassword(
@@ -327,20 +331,7 @@ export async function loadProjectByNumberAndPassword(
     console.error("Unable to load project from Supabase:", error);
   }
 
-  const index = loadProjectIndex();
-  const entry = index[normalized];
-  if (!entry) return null;
-
-  if (entry.passwordHash !== hashPassword(projectPassword)) {
-    return null;
-  }
-
-  const localProject = readStoredProject(getStorageKey(normalized));
-  if (localProject) {
-    void saveProjectState(localProject);
-  }
-
-  return localProject;
+  return null;
 }
 
 export function isProjectNumberTaken(
@@ -358,9 +349,6 @@ export function isProjectNumberTaken(
 }
 
 export async function listProjectSummaries() {
-  const localProjects = listLocalProjects();
-  const localSummaries = listLocalProjectSummaries();
-
   try {
     const response = await fetch("/api/professor-admin/projects");
     const data = await readJsonResponse<{
@@ -376,65 +364,41 @@ export async function listProjectSummaries() {
     }>(response);
 
     if (Array.isArray(data?.projects)) {
-      const remoteProjectNumbers = new Set(
-        data.projects.map((project) =>
-          normalizeProjectNumber(project.projectNumber)
-        )
-      );
-
-      for (const project of localProjects) {
-        const projectNumber = normalizeProjectNumber(
-          project.setup.projectNumber
-        );
-
-        if (!remoteProjectNumbers.has(projectNumber)) {
-          void saveProjectState(project);
-        }
-      }
-
-      const merged = [...data.projects];
-
-      for (const summary of localSummaries) {
-        if (
-          !remoteProjectNumbers.has(
-            normalizeProjectNumber(summary.projectNumber)
-          )
-        ) {
-          merged.push(summary);
-        }
-      }
-
-      return merged;
+      return data.projects;
     }
   } catch (error) {
     console.error("Unable to list projects from Supabase:", error);
   }
 
-  return localSummaries;
+  return [];
 }
 
 export async function deleteProjectState(projectNumber: string) {
   const normalized = normalizeProjectNumber(projectNumber);
   if (!normalized) return false;
 
-  const index = loadProjectIndex();
-  delete index[normalized];
-  saveProjectIndex(index);
-
-  try {
-    localStorage.removeItem(getStorageKey(normalized));
-  } catch (error) {
-    console.error("Unable to delete project:", error);
-    return false;
-  }
-
   try {
     const response = await fetch(
-      `/api/professor-admin/projects/${encodeURIComponent(normalized)}`,
+      `/api/professor-admin/projects/${encodeURIComponent(projectNumber.trim())}`,
       { method: "DELETE" }
     );
 
-    if (!response.ok) return false;
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      console.error("Unable to delete project from Supabase:", data?.error || response.statusText);
+      return false;
+    }
+
+    const index = loadProjectIndex();
+    delete index[normalized];
+    saveProjectIndex(index);
+
+    try {
+      localStorage.removeItem(getStorageKey(normalized));
+      removeProjectScopedStorage(normalized);
+    } catch (error) {
+      console.error("Unable to clear deleted project from this browser:", error);
+    }
   } catch (error) {
     console.error("Unable to delete project from Supabase:", error);
     return false;

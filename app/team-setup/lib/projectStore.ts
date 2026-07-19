@@ -55,6 +55,12 @@ function normalizeProjectNumber(value: string) {
   return value.trim().toUpperCase();
 }
 
+function projectNumberCandidates(value: string) {
+  return Array.from(
+    new Set([cleanString(value).trim(), normalizeProjectNumber(value)].filter(Boolean))
+  );
+}
+
 export function hashProjectPassword(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -198,13 +204,15 @@ export async function loadProjectFromSupabase(projectNumber: string) {
   const { data, error } = await supabaseAdmin
     .from("team_projects")
     .select("project_state")
-    .eq("project_number", normalized)
-    .single();
+    .in("project_number", projectNumberCandidates(projectNumber))
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
-    if (error.code === "PGRST116") return null;
     throw error;
   }
+
+  if (!data) return null;
 
   return data.project_state as StoredProjectState;
 }
@@ -223,13 +231,15 @@ export async function loadProjectWithPasswordFromSupabase(
   const { data, error } = await supabaseAdmin
     .from("team_projects")
     .select("password_hash, project_state")
-    .eq("project_number", normalized)
-    .single();
+    .in("project_number", projectNumberCandidates(projectNumber))
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
-    if (error.code === "PGRST116") return null;
     throw error;
   }
+
+  if (!data) return null;
 
   if (data.password_hash !== hashProjectPassword(projectPassword)) {
     return null;
@@ -246,10 +256,35 @@ export async function deleteProjectFromSupabase(projectNumber: string) {
   const normalized = normalizeProjectNumber(projectNumber);
   if (!normalized) return false;
 
+  const existingProject = await loadProjectFromSupabase(projectNumber);
+  const projectNumberValues = projectNumberCandidates(projectNumber);
+  const projectKeys = Array.from(
+    new Set(
+      [
+        ...projectNumberValues,
+        existingProject?.setup.projectId,
+        existingProject?.setup.projectNumber,
+      ]
+        .map((value) => cleanString(value).trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (projectKeys.length > 0) {
+    const { error: feedbackDeleteError } = await supabaseAdmin
+      .from("professor_feedback")
+      .delete()
+      .in("project_key", projectKeys);
+
+    if (feedbackDeleteError) {
+      throw feedbackDeleteError;
+    }
+  }
+
   const { error } = await supabaseAdmin
     .from("team_projects")
     .delete()
-    .eq("project_number", normalized);
+    .in("project_number", projectNumberValues);
 
   if (error) {
     throw error;

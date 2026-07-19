@@ -5,9 +5,10 @@ import Link from "next/link";
 import styles from "./presentation.module.css";
 import {
   buildPosterContent,
-  readAllStudioObjects,
+  readAllStudioObjectsFromProject,
 } from "@/components/ProjectState/projectService";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
+import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
 
 type PosterBlock = {
   id: string;
@@ -58,7 +59,7 @@ type SavedPoster = {
 };
 
 const PRESENTATION_STORAGE_KEY = "plstudio_presentation_v2";
-const POSTER_STORAGE_KEYS = ["plstudio_poster_v2", "plstudio_poster_v1"];
+const POSTER_STORAGE_KEY = "plstudio_poster_v3";
 
 const defaultPosterHeader: PosterHeader = {
   title: "Policy Poster Presentation",
@@ -82,17 +83,17 @@ const defaultQuestions = [
   "What is the main limitation of your proposal, and how would you address it?",
 ];
 
-const readSavedPoster = (): SavedPoster => {
-  for (const key of POSTER_STORAGE_KEYS) {
-    const raw = localStorage.getItem(key);
-    if (!raw) continue;
+const readSavedPoster = (storageKey: string): SavedPoster => {
+  if (!storageKey) return {};
 
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.blocks)) return parsed;
-    } catch {
-      continue;
-    }
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.blocks)) return parsed;
+  } catch {
+    return {};
   }
 
   return {};
@@ -112,6 +113,14 @@ const buildDefaultScript = (title: string, content: string) => {
 
 export default function PresentationStudioPage() {
   const { project, updateStudioState } = useProject();
+  const projectScopedStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    PRESENTATION_STORAGE_KEY
+  );
+  const projectScopedPosterStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    POSTER_STORAGE_KEY
+  );
   const [posterHeader, setPosterHeader] =
     useState<PosterHeader>(defaultPosterHeader);
   const [exportItems, setExportItems] = useState<ExportItem[]>([]);
@@ -120,7 +129,7 @@ export default function PresentationStudioPage() {
   const [activeSection, setActiveSection] = useState<
     "export" | "script" | "qa" | null
   >("export");
-  const hydratedFromProject = useRef(false);
+  const hydratedProjectKey = useRef("");
   const [lastSaved, setLastSaved] = useState("Not saved yet");
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -135,9 +144,12 @@ export default function PresentationStudioPage() {
   );
 
   useEffect(() => {
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current === projectKey) return;
+
     const storedState = project.studioStates?.presentation;
 
-    if (!hydratedFromProject.current && storedState && typeof storedState === "object") {
+    if (storedState && typeof storedState === "object") {
       const parsed = storedState as {
         posterHeader?: PosterHeader;
         exportItems?: ExportItem[];
@@ -151,11 +163,13 @@ export default function PresentationStudioPage() {
       setPitchSections(parsed.pitchSections || []);
       setQuestions(parsed.questions || []);
       setLastSaved(parsed.lastSaved || "Loaded saved presentation.");
-      hydratedFromProject.current = true;
+      hydratedProjectKey.current = projectKey;
       return;
     }
 
-    const saved = localStorage.getItem(PRESENTATION_STORAGE_KEY);
+    const saved = projectScopedStorageKey
+      ? localStorage.getItem(projectScopedStorageKey)
+      : null;
 
     if (saved) {
       try {
@@ -165,14 +179,16 @@ export default function PresentationStudioPage() {
         setPitchSections(parsed.pitchSections || []);
         setQuestions(parsed.questions || []);
         setLastSaved(parsed.lastSaved || "Loaded saved work");
+        hydratedProjectKey.current = projectKey;
         return;
       } catch {
-        localStorage.removeItem(PRESENTATION_STORAGE_KEY);
+        if (projectScopedStorageKey) localStorage.removeItem(projectScopedStorageKey);
       }
     }
 
     importFromPoster();
-  }, [project.studioStates]);
+    hydratedProjectKey.current = projectKey;
+  }, [project.setup.projectNumber, project.studioStates, projectScopedStorageKey]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -180,11 +196,14 @@ export default function PresentationStudioPage() {
     }, 45000);
 
     return () => clearInterval(timer);
-  });
+  }, [posterHeader, exportItems, pitchSections, questions, projectScopedStorageKey]);
 
   const importFromPoster = () => {
-    const savedPoster = readSavedPoster();
-    const studioObjects = readAllStudioObjects();
+    const savedPoster =
+      project.studioStates?.poster && typeof project.studioStates.poster === "object"
+        ? (project.studioStates.poster as SavedPoster)
+        : readSavedPoster(projectScopedPosterStorageKey);
+    const studioObjects = readAllStudioObjectsFromProject(project);
     const fallbackContent = buildPosterContent(studioObjects);
 
     const header = savedPoster.posterHeader || defaultPosterHeader;
@@ -327,10 +346,12 @@ export default function PresentationStudioPage() {
       lastSaved: `${message} at ${savedAt}`,
     };
 
-    localStorage.setItem(
-      PRESENTATION_STORAGE_KEY,
-      JSON.stringify(presentationState)
-    );
+    if (projectScopedStorageKey) {
+      localStorage.setItem(
+        projectScopedStorageKey,
+        JSON.stringify(presentationState)
+      );
+    }
     updateStudioState("presentation", presentationState);
 
     setLastSaved(`${message} at ${savedAt}`);
@@ -437,12 +458,16 @@ export default function PresentationStudioPage() {
   };
 
   return (
-    <main className="page">
+    <main className={styles.presentationPage}>
       <section className={styles.hero}>
         <div className={styles.heroText}>
           <div className={styles.kicker}>POLICY LAB STUDIO</div>
 
-          <h1 className={styles.pageTitle}>Presentation Studio</h1>
+          <h1 className={styles.pageTitle}>
+            Presentation
+            <br />
+            Studio
+          </h1>
 
           <p className={styles.subtitle}>
             Prepare your PowerPoint presentation, pitch script, and judges’
@@ -479,7 +504,7 @@ export default function PresentationStudioPage() {
 
           <button
             type="button"
-            className="button secondaryButton"
+            className="button saveProgressButton"
             onClick={() => saveProgress()}
           >
             Save Progress

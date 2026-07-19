@@ -59,8 +59,11 @@ export default function TeamSessionBar({
             display: "flex",
             justifyContent: "flex-end",
             padding: "12px 16px",
-            background: "#ffffff",
-            borderBottom: "1px solid #e5e7eb",
+            background:
+              "linear-gradient(135deg, rgba(8, 19, 33, 0.92), rgba(15, 61, 59, 0.82))",
+            borderBottom: "1px solid rgba(255, 255, 255, 0.18)",
+            boxShadow: "0 10px 30px rgba(3, 7, 18, 0.24)",
+            backdropFilter: "blur(10px)",
           }}
         >
           <button type="button" className="button secondaryButton" onClick={handleLogout}>

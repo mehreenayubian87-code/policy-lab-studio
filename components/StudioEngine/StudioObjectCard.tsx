@@ -335,16 +335,16 @@ export default function StudioObjectCard({
         width: object.width,
         height: object.height,
         background: object.color,
-        borderRadius: 18,
+        borderRadius: 10,
         padding: 14,
         boxShadow: selected
-          ? "0 0 0 3px rgba(15,47,102,0.35), 0 14px 30px rgba(15,23,42,0.16)"
-          : "0 10px 22px rgba(15,23,42,0.12)",
+          ? "0 0 0 3px rgba(212,165,116,0.36), 0 14px 30px rgba(43,88,118,0.16)"
+          : "0 10px 22px rgba(43,88,118,0.12)",
         border: connectionStart
           ? "3px solid #16a34a"
           : selected
-          ? "3px solid #0f2f66"
-          : "1px solid rgba(15,47,102,.12)",
+          ? "3px solid #1e3a5f"
+          : "1px solid rgba(43,88,118,.14)",
         cursor: object.locked ? "default" : "grab",
         display: "grid",
         gridTemplateRows: "auto 1fr auto",
@@ -361,7 +361,7 @@ export default function StudioObjectCard({
           alignItems: "center",
         }}
       >
-        <strong style={{ color: "#0f2f66" }}>
+        <strong style={{ color: "#1e3a5f" }}>
           {object.icon ? `${object.icon} ` : null}
           {object.title}
         </strong>
@@ -476,8 +476,8 @@ export default function StudioObjectCard({
           onPointerDown={startResize}
           style={{
             border: "none",
-            background: "rgba(15,47,102,0.08)",
-            color: "#0f2f66",
+            background: "rgba(212,165,116,0.22)",
+            color: "#1e3a5f",
             borderRadius: 8,
             width: 26,
             height: 26,
@@ -496,8 +496,8 @@ export default function StudioObjectCard({
 
 const miniButtonStyle: CSSProperties = {
   border: "none",
-  background: "rgba(255,255,255,0.75)",
-  color: "#0f2f66",
+  background: "rgba(255,248,231,0.85)",
+  color: "#1e3a5f",
   borderRadius: 8,
   width: 24,
   height: 24,
@@ -509,11 +509,11 @@ const miniButtonStyle: CSSProperties = {
 };
 
 const smallSelectStyle: CSSProperties = {
-  border: "1px solid rgba(15,47,102,0.15)",
+  border: "1px solid rgba(43,88,118,0.16)",
   borderRadius: 999,
   padding: "4px 8px",
   background: "white",
-  color: "#0f2f66",
+  color: "#1e3a5f",
   fontWeight: 700,
   maxWidth: 115,
 };
@@ -525,7 +525,7 @@ const textareaStyle: CSSProperties = {
   border: "none",
   outline: "none",
   background: "transparent",
-  color: "#0f172a",
+  color: "#2c3e50",
   font: "inherit",
   lineHeight: 1.45,
   cursor: "text",
@@ -552,12 +552,12 @@ const barTrackStyle: CSSProperties = {
   width: "100%",
   height: 12,
   borderRadius: 999,
-  background: "rgba(15,47,102,0.12)",
+  background: "rgba(212,165,116,0.22)",
   overflow: "hidden",
 };
 
 const barFillStyle: CSSProperties = {
   height: "100%",
   borderRadius: 999,
-  background: "#0f2f66",
+  background: "#1e3a5f",
 };

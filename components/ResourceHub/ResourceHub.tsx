@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./ResourceHub.module.css";
 import { resourceLibrary } from "./resourceLibrary";
+import { useProject } from "@/components/ProjectState/ProjectProvider";
+import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
 
 type ResourceItem = (typeof resourceLibrary)[number];
 
@@ -22,6 +24,11 @@ const studioTabs = [
 ];
 
 export default function ResourceHub() {
+  const { project, updateStudioState } = useProject();
+  const projectScopedStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    STORAGE_KEY
+  );
   const [activeStudio, setActiveStudio] = useState("All Resources");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("All Types");
@@ -29,11 +36,39 @@ export default function ResourceHub() {
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const hydratedProjectKey = useRef("");
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current === projectKey) return;
 
-    if (!saved) return;
+    const storedState = project.studioStates?.resourceHub;
+
+    if (storedState && typeof storedState === "object") {
+      const parsed = storedState as {
+        completed?: Record<string, boolean>;
+        favorites?: Record<string, boolean>;
+        notes?: Record<string, string>;
+      };
+
+      setCompleted(parsed.completed || {});
+      setFavorites(parsed.favorites || {});
+      setNotes(parsed.notes || {});
+      hydratedProjectKey.current = projectKey;
+      return;
+    }
+
+    if (!projectScopedStorageKey) {
+      hydratedProjectKey.current = projectKey;
+      return;
+    }
+
+    const saved = localStorage.getItem(projectScopedStorageKey);
+
+    if (!saved) {
+      hydratedProjectKey.current = projectKey;
+      return;
+    }
 
     try {
       const parsed = JSON.parse(saved);
@@ -41,20 +76,31 @@ export default function ResourceHub() {
       setFavorites(parsed.favorites || {});
       setNotes(parsed.notes || {});
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(projectScopedStorageKey);
+    } finally {
+      hydratedProjectKey.current = projectKey;
     }
-  }, []);
+  }, [project.setup.projectNumber, project.studioStates, projectScopedStorageKey]);
 
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        completed,
-        favorites,
-        notes,
-      })
-    );
-  }, [completed, favorites, notes]);
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current !== projectKey) return;
+
+    const resourceHubState = {
+      completed,
+      favorites,
+      notes,
+    };
+
+    if (projectScopedStorageKey) {
+      localStorage.setItem(
+        projectScopedStorageKey,
+        JSON.stringify(resourceHubState)
+      );
+    }
+
+    updateStudioState("resourceHub", resourceHubState);
+  }, [completed, favorites, notes, project.setup.projectNumber, projectScopedStorageKey, updateStudioState]);
 
   const resourceTypes = useMemo(() => {
     return [
@@ -123,67 +169,68 @@ export default function ResourceHub() {
   };
 
   return (
-    <main className="page">
-      <section className={styles.header}>
-        <div>
-          <div className={styles.kicker}>POLICY LAB STUDIO</div>
-          <h1>Resource Hub</h1>
-          <p>
-            Curated readings, templates, frameworks, and examples for each stage
-            of the policy lab workflow.
-          </p>
-        </div>
+    <main className={styles.resourcePage}>
+      <section className={styles.resourcePanel}>
+        <header className={styles.header}>
+          <div className={styles.headerCopy}>
+            <div className={styles.kicker}>POLICY LAB STUDIO</div>
+            <h1>Resource Hub</h1>
+            <p>
+              Curated readings, templates, frameworks, and examples for each stage
+              of the policy lab workflow.
+            </p>
+          </div>
 
-        <div className={styles.headerActions}>
-          <Link href="/dashboard" className="button secondaryButton">
-            Go to Dashboard
-          </Link>
-          <Link href="/" className="button secondaryButton">
-            Home
-          </Link>
-        </div>
-      </section>
+          <div className={styles.headerActions}>
+            <Link href="/dashboard" className="button secondaryButton">
+              Go to Dashboard
+            </Link>
+            <Link href="/" className="button secondaryButton">
+              Home
+            </Link>
+          </div>
+        </header>
 
-      <section className={styles.statsRow}>
-        <div className={styles.statCard}>
-          <strong>{resourceLibrary.length}</strong>
-          <span>Total resources</span>
-        </div>
+        <section className={styles.statsRow}>
+          <div className={styles.statCard}>
+            <strong>{resourceLibrary.length}</strong>
+            <span>Total resources</span>
+          </div>
 
-        <div className={styles.statCard}>
-          <strong>{completedCount}</strong>
-          <span>Completed</span>
-        </div>
+          <div className={styles.statCard}>
+            <strong>{completedCount}</strong>
+            <span>Completed</span>
+          </div>
 
-        <div className={styles.statCard}>
-          <strong>{favoriteCount}</strong>
-          <span>Favorites</span>
-        </div>
+          <div className={styles.statCard}>
+            <strong>{favoriteCount}</strong>
+            <span>Favorites</span>
+          </div>
 
-        <div className={styles.statCard}>
-          <strong>{filteredResources.length}</strong>
-          <span>Current view</span>
-        </div>
-      </section>
+          <div className={styles.statCard}>
+            <strong>{filteredResources.length}</strong>
+            <span>Current view</span>
+          </div>
+        </section>
 
-      <section className={styles.filters}>
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search resources, frameworks, studios, or tags..."
-        />
+        <section className={styles.filters}>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search resources, frameworks, studios, or tags..."
+          />
 
-        <select
-          value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value)}
-        >
-          {resourceTypes.map((type) => (
-            <option key={type}>{type}</option>
-          ))}
-        </select>
-      </section>
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value)}
+          >
+            {resourceTypes.map((type) => (
+              <option key={type}>{type}</option>
+            ))}
+          </select>
+        </section>
 
-      <section className={styles.hubShell}>
+        <section className={styles.hubShell}>
         <aside className={styles.leftPanel}>
           {studioTabs.map((tab) => (
             <button
@@ -359,6 +406,7 @@ export default function ResourceHub() {
             <div className={styles.emptyState}>Select a resource.</div>
           )}
         </aside>
+        </section>
       </section>
     </main>
   );

@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import {
   buildPosterContent,
-  readAllStudioObjects,
+  readAllStudioObjectsFromProject,
 } from "@/components/ProjectState/projectService";
+import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
 import styles from "./poster.module.css";
 
 type PosterBlockKind =
@@ -72,176 +73,7 @@ const initialHeader: PosterHeader = {
   instructor: "Instructor",
 };
 
-const initialBlocks: PosterBlock[] = [
-  {
-    id: "problem",
-    number: "1",
-    title: "The Problem",
-    type: "Problem Statement",
-    accent: "#f97316",
-    x: 0,
-    y: 0,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Describe the core policy problem, who is affected, where it occurs, and why it matters.",
-  },
-  {
-    id: "evidence",
-    number: "2",
-    title: "Key Evidence",
-    type: "Data & Statistics",
-    accent: "#2563eb",
-    x: 460,
-    y: 0,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Add your strongest evidence, statistics, sources, and key findings from the Problem Studio.",
-  },
-  {
-    id: "population",
-    number: "3",
-    title: "Target Population",
-    type: "Users / Beneficiaries",
-    accent: "#059669",
-    x: 920,
-    y: 0,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Describe the population affected by the problem and who the solution is designed for.",
-  },
-  {
-    id: "stakeholders",
-    number: "4",
-    title: "Stakeholders & System",
-    type: "Process Studio",
-    accent: "#7c3aed",
-    x: 0,
-    y: 250,
-    width: 440,
-    height: 260,
-    kind: "section",
-    content:
-      "Summarize key actors, power relationships, governance barriers, and system dynamics.",
-  },
-  {
-    id: "solution",
-    number: "5",
-    title: "Proposed Solution",
-    type: "Solution Studio",
-    accent: "#16a34a",
-    x: 460,
-    y: 250,
-    width: 440,
-    height: 260,
-    kind: "section",
-    content:
-      "Describe the selected solution, why it is appropriate, and how it responds to the problem.",
-  },
-  {
-    id: "journey",
-    number: "6",
-    title: "User Journey",
-    type: "Experience / Pathway",
-    accent: "#ea580c",
-    x: 920,
-    y: 250,
-    width: 440,
-    height: 260,
-    kind: "section",
-    content:
-      "Show how the user moves from awareness to engagement, service use, and improved outcomes.",
-  },
-  {
-    id: "implementation",
-    number: "7",
-    title: "Implementation Plan",
-    type: "Timeline / Activities",
-    accent: "#0891b2",
-    x: 0,
-    y: 530,
-    width: 670,
-    height: 300,
-    kind: "section",
-    content:
-      "Add implementation phases, owners, key activities, resources, and delivery milestones.",
-  },
-  {
-    id: "risks",
-    number: "8",
-    title: "Risks & Mitigation",
-    type: "Risk Register",
-    accent: "#be123c",
-    x: 690,
-    y: 530,
-    width: 670,
-    height: 300,
-    kind: "section",
-    content:
-      "List major risks and mitigation strategies for implementation and sustainability.",
-  },
-  {
-    id: "indicators",
-    number: "9",
-    title: "Monitoring & Indicators",
-    type: "Dashboard",
-    accent: "#0f766e",
-    x: 0,
-    y: 850,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Add measurable indicators, targets, data sources, and monitoring frequency.",
-  },
-  {
-    id: "timeline",
-    number: "10",
-    title: "Timeline Overview",
-    type: "Milestones",
-    accent: "#1d4ed8",
-    x: 460,
-    y: 850,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Summarize the timeline from preparation to pilot, scale-up, and sustainability.",
-  },
-  {
-    id: "funding",
-    number: "11",
-    title: "Funding & Resources",
-    type: "Budget / Ownership",
-    accent: "#b45309",
-    x: 920,
-    y: 850,
-    width: 440,
-    height: 230,
-    kind: "section",
-    content:
-      "Add estimated resources, funding sources, ownership, and responsible institutions.",
-  },
-  {
-    id: "partners",
-    number: "12",
-    title: "Partners & Collaborators",
-    type: "Team / Institutions",
-    accent: "#6d28d9",
-    x: 0,
-    y: 1100,
-    width: 1360,
-    height: 230,
-    kind: "section",
-    content:
-      "Add partners, collaborators, team members, course, instructor, and contact information.",
-  },
-];
+const initialBlocks: PosterBlock[] = [];
 
 const posterSections = [
   ["header", "Header", "Title, logo, subtitle"],
@@ -284,17 +116,21 @@ const sideTabs: { icon: string; label: SideTab }[] = [
 ];
 
 const themeMap: Record<ThemeName, { label: string; primary: string; accent: string; bg: string }> = {
-  academic: { label: "Academic Blue", primary: "#06265c", accent: "#f97316", bg: "#ffffff" },
-  modern: { label: "Modern", primary: "#0f766e", accent: "#7c3aed", bg: "#ffffff" },
+  academic: { label: "Academic Blue", primary: "#1e3a5f", accent: "#d4a574", bg: "#ffffff" },
+  modern: { label: "Modern", primary: "#2b5876", accent: "#c8954a", bg: "#ffffff" },
   minimal: { label: "Minimal", primary: "#111827", accent: "#64748b", bg: "#ffffff" },
   dark: { label: "Dark", primary: "#020617", accent: "#38bdf8", bg: "#f8fafc" },
-  institutional: { label: "Institutional", primary: "#0f2f66", accent: "#b45309", bg: "#ffffff" },
+  institutional: { label: "Institutional", primary: "#1e3a5f", accent: "#d4a574", bg: "#ffffff" },
 };
 
 const placeholderTexts = ["describe", "add", "summarize", "placeholder"];
 
 export default function PosterStudioPage() {
   const { project, importObjects, appendAlert, updateStudioState } = useProject();
+  const projectScopedStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    POSTER_STORAGE_KEY
+  );
 
   const [posterHeader, setPosterHeader] = useState<PosterHeader>(initialHeader);
   const [blocks, setBlocks] = useState<PosterBlock[]>(initialBlocks);
@@ -317,14 +153,17 @@ export default function PosterStudioPage() {
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const hydratedFromProject = useRef(false);
+  const hydratedProjectKey = useRef("");
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId);
   const currentTheme = themeMap[theme];
 
   useEffect(() => {
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current === projectKey) return;
+
     const storedState = project.studioStates?.poster;
 
-    if (!hydratedFromProject.current && storedState && typeof storedState === "object") {
+    if (storedState && typeof storedState === "object") {
       const parsed = storedState as {
         posterHeader?: PosterHeader;
         blocks?: PosterBlock[];
@@ -344,13 +183,30 @@ export default function PosterStudioPage() {
         setSavedStatus("Loaded saved work");
       }
 
-      hydratedFromProject.current = true;
+      hydratedProjectKey.current = projectKey;
       return;
     }
 
     try {
-      const raw = localStorage.getItem(POSTER_STORAGE_KEY);
-      if (!raw) return;
+      if (!projectScopedStorageKey) {
+        hydratedProjectKey.current = projectKey;
+        return;
+      }
+
+      const raw = localStorage.getItem(projectScopedStorageKey);
+      if (!raw) {
+        setPosterHeader(initialHeader);
+        setBlocks(initialBlocks);
+        setSelectedBlockId("");
+        setSelectedHeaderField(null);
+        setTheme("academic");
+        setPosterSize("A0");
+        setOrientation("landscape");
+        setLastSavedAt(null);
+        setSavedStatus("Not saved yet");
+        hydratedProjectKey.current = projectKey;
+        return;
+      }
       const parsed = JSON.parse(raw);
       if (parsed.posterHeader) setPosterHeader(parsed.posterHeader);
       if (Array.isArray(parsed.blocks)) setBlocks(parsed.blocks);
@@ -361,10 +217,12 @@ export default function PosterStudioPage() {
         setLastSavedAt(parsed.savedAt);
         setSavedStatus(`Loaded saved work`);
       }
+      hydratedProjectKey.current = projectKey;
     } catch (error) {
       console.error(error);
+      hydratedProjectKey.current = projectKey;
     }
-  }, [project.studioStates]);
+  }, [project.setup.projectNumber, project.studioStates, projectScopedStorageKey]);
 
   const savePoster = (silent = false) => {
     const savedAt = new Date().toISOString();
@@ -377,10 +235,12 @@ export default function PosterStudioPage() {
       savedAt,
     };
 
-    localStorage.setItem(
-      POSTER_STORAGE_KEY,
-      JSON.stringify(posterState)
-    );
+    if (projectScopedStorageKey) {
+      localStorage.setItem(
+        projectScopedStorageKey,
+        JSON.stringify(posterState)
+      );
+    }
     updateStudioState("poster", posterState);
     setLastSavedAt(savedAt);
     setSavedStatus(silent ? "Auto-saved" : "Progress saved");
@@ -400,7 +260,10 @@ export default function PosterStudioPage() {
     [blocks]
   );
 
-  const progressPercent = Math.round((completedCount / blocks.length) * 100);
+  const progressPercent =
+    blocks.length > 0
+      ? Math.round((completedCount / blocks.length) * 100)
+      : 0;
 
   const wordCount = useMemo(() => {
     const text = [posterHeader.title, posterHeader.subtitle, ...blocks.map((b) => b.content)].join(" ");
@@ -615,7 +478,7 @@ export default function PosterStudioPage() {
   };
 
   const readPosterContent = () => {
-    const importedObjects = readAllStudioObjects();
+    const importedObjects = readAllStudioObjectsFromProject(project);
     importObjects(importedObjects);
     return buildPosterContent(importedObjects);
   };
@@ -666,7 +529,7 @@ export default function PosterStudioPage() {
       number: "+",
       title: `${source} Chart`,
       type: `Imported from ${source} Studio`,
-      accent: "#0f766e",
+      accent: "#2b5876",
       x: 460,
       y: 1380 + blocks.filter((block) => block.kind === "chart").length * 240,
       width: 440,
@@ -701,7 +564,7 @@ export default function PosterStudioPage() {
       number: "+",
       title: `${source} Icon`,
       type: `Imported from ${source} Studio`,
-      accent: "#7c3aed",
+      accent: "#4e4376",
       x: 920,
       y: 1380 + blocks.filter((block) => block.kind === "icon").length * 200,
       width: 340,
@@ -818,7 +681,9 @@ export default function PosterStudioPage() {
     setBlocks(initialBlocks);
     setSelectedBlockId("problem");
     setSelectedHeaderField(null);
-    localStorage.removeItem(POSTER_STORAGE_KEY);
+    if (projectScopedStorageKey) {
+      localStorage.removeItem(projectScopedStorageKey);
+    }
     setSavedStatus("Layout reset");
   };
 
@@ -835,7 +700,7 @@ export default function PosterStudioPage() {
         <>
           <h2>Poster Studio</h2>
           <p className="fieldNote">Build a conference-style poster from your completed policy work.</p>
-          <button type="button" className="button" onClick={() => savePoster(false)}>Save Progress</button>
+          <button type="button" className="button saveProgressButton" onClick={() => savePoster(false)}>Save Progress</button>
           <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview Poster"}</button>
           <button type="button" className="button secondaryButton" onClick={() => window.print()}>Export / Print</button>
         </>
@@ -1104,22 +969,24 @@ export default function PosterStudioPage() {
   };
 
   return (
-    <main className="page">
+    <main className={styles.posterPage}>
       <section className={styles.topHeader}>
         <div>
           <div className={styles.kicker}>POLICY LAB STUDIO</div>
-          <h1>Poster Studio</h1>
-          <p>Professional conference poster builder.</p>
+          <h1>
+            Poster
+            <br />
+            Studio
+          </h1>
           <span className={styles.saveStatus}>{savedStatus}{lastSavedAt ? ` · ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
         </div>
         <div className={styles.headerActions}>
-          <Link href="/dashboard" className="button secondaryButton">Dashboard</Link>
           <Link href="/implementation" className="button secondaryButton">Previous Studio</Link>
           <Link href="/presentation" className="button secondaryButton">Next Studio</Link>
-          <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview"}</button>
-          <button type="button" className="button" onClick={handlePosterAlert}>Alert Admin</button>
-          <button type="button" className="button" onClick={() => window.print()}>Export</button>
-          <button type="button" className="button" onClick={() => savePoster(false)}>Save Progress</button>
+          <Link href="/dashboard" className="button secondaryButton">Dashboard</Link>
+          <div className={styles.alertRow}>
+            <button type="button" className={`button ${styles.alertButton}`} onClick={handlePosterAlert}>Alert Admin</button>
+          </div>
         </div>
       </section>
 
@@ -1148,7 +1015,7 @@ export default function PosterStudioPage() {
           <div ref={workspaceRef} className={styles.workspaceScroll} onPaste={handleWorkspacePaste} onDrop={(event) => handleImageDrop(event)} onDragOver={(event) => event.preventDefault()}>
             <div className={styles.zoomLayer} style={{ width: posterWidth + 100, minHeight: posterHeight + 100, transform: `scale(${zoom})` }}>
               <div className={styles.posterPaper} style={{ width: posterWidth, minHeight: posterHeight, background: currentTheme.bg }}>
-                <section className={styles.posterHeader} style={{ background: `linear-gradient(135deg, ${currentTheme.primary} 0%, #0f3f88 100%)`, outline: selectedHeaderField ? `4px solid ${currentTheme.accent}` : "none" }} onClick={() => scrollToHeader("title")}>
+                <section className={styles.posterHeader} style={{ background: `linear-gradient(135deg, ${currentTheme.primary} 0%, #2b5876 100%)`, outline: selectedHeaderField ? `4px solid ${currentTheme.accent}` : "none" }} onClick={() => scrollToHeader("title")}>
                   <div className={styles.logoCircle} onClick={(event) => { event.stopPropagation(); scrollToHeader("logo"); }}>{posterHeader.logo}</div>
                   <div><h1>{posterHeader.title}</h1><p>{posterHeader.subtitle}</p></div>
                   <div className={styles.headerMeta}>{posterHeader.team}<br />{posterHeader.course}<br />{posterHeader.instructor}</div>
@@ -1167,12 +1034,20 @@ export default function PosterStudioPage() {
           </div>
 
           <div className={styles.zoomControls}>
-            <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.max(0.35, prev - 0.08))}>−</button>
-            <span>{Math.round(zoom * 100)}%</span>
-            <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.min(1.2, prev + 0.08))}>+</button>
-            <button type="button" className="button secondaryButton" onClick={() => setZoom(0.58)}>Fit</button>
-            <button type="button" className="button secondaryButton" onClick={() => setZoom(1)}>100%</button>
-            <button type="button" className="button secondaryButton" onClick={resetPosterLayout}>Reset Layout</button>
+            <div className={styles.zoomButtonGroup}>
+              <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.max(0.35, prev - 0.08))}>−</button>
+              <span>{Math.round(zoom * 100)}%</span>
+              <button type="button" className="button secondaryButton" onClick={() => setZoom((prev) => Math.min(1.2, prev + 0.08))}>+</button>
+              <button type="button" className="button secondaryButton" onClick={() => setZoom(0.58)}>Fit</button>
+              <button type="button" className="button secondaryButton" onClick={() => setZoom(1)}>100%</button>
+              <button type="button" className="button secondaryButton" onClick={resetPosterLayout}>Reset Layout</button>
+            </div>
+
+            <div className={styles.workspaceActions}>
+              <button type="button" className="button secondaryButton" onClick={() => setIsPreview((prev) => !prev)}>{isPreview ? "Exit Preview" : "Preview"}</button>
+              <button type="button" className="button" onClick={() => window.print()}>Export</button>
+              <button type="button" className="button saveProgressButton" onClick={() => savePoster(false)}>Save Progress</button>
+            </div>
           </div>
         </section>
       </section>

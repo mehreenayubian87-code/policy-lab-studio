@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { CanvasConfig, PolicyObject, PolicyObjectType } from "./types";
 import { objectPresets } from "./objectPresets";
 import PolicyObjectCard from "./PolicyObjectCard";
 import IconLibrary from "./IconLibrary";
+import { useProject } from "@/components/ProjectState/ProjectProvider";
+import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
 
 type ToolGroup = { title: string; tools: { type: PolicyObjectType; label: string }[] };
 
@@ -17,22 +19,43 @@ const toolGroups: ToolGroup[] = [
   { title: "Visuals", tools: [{ type: "sticky", label: "Sticky Note" }, { type: "chart", label: "Chart" }, { type: "aiVisual", label: "AI Visual" }] },
 ];
 
-const initialObjects: PolicyObject[] = [
-  { id: "welcome-problem", type: "problem", title: "Problem Statement", content: "Define the policy problem here. Keep it specific, evidence-informed, and focused on who is affected.", x: 60, y: 70, width: 320, height: 180, color: "#ffd6d6", icon: "🔍" },
-  { id: "welcome-evidence", type: "evidence", title: "Evidence Card", content: "Add statistics, literature, reports, or field observations that explain why this problem matters.", x: 420, y: 70, width: 320, height: 180, color: "#dbeafe", icon: "📚" },
-  { id: "welcome-hmw", type: "hmw", title: "How Might We", content: "How might we help [user] achieve [goal] despite [barrier]?", x: 780, y: 70, width: 330, height: 170, color: "#fef3c7", icon: "❓" },
-];
+const initialObjects: PolicyObject[] = [];
 
 export default function PolicyCanvas({ config, rightPanel }: { config: CanvasConfig; rightPanel?: ReactNode }) {
+  const { project, updateStudioState } = useProject();
+  const projectScopedStorageKey = getProjectStudioStorageKey(
+    project.setup.projectNumber,
+    config.storageKey
+  );
   const [objects, setObjects] = useState<PolicyObject[]>(initialObjects);
-  const [selectedId, setSelectedId] = useState<string | null>(initialObjects[0].id);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [saved, setSaved] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
+  const hydratedProjectKey = useRef("");
 
   useEffect(() => {
+    const projectKey = project.setup.projectNumber.trim().toUpperCase();
+    if (!projectKey || hydratedProjectKey.current === projectKey) return;
+
+    const storedState = project.studioStates?.[config.storageKey];
+
+    if (storedState && typeof storedState === "object") {
+      const data = storedState as { objects?: PolicyObject[]; zoom?: number };
+      setObjects(Array.isArray(data.objects) ? data.objects : initialObjects);
+      setSelectedId(Array.isArray(data.objects) ? data.objects[0]?.id ?? null : null);
+      if (typeof data.zoom === "number") setZoom(data.zoom);
+      hydratedProjectKey.current = projectKey;
+      return;
+    }
+
     try {
-      const raw = localStorage.getItem(config.storageKey);
+      if (!projectScopedStorageKey) {
+        hydratedProjectKey.current = projectKey;
+        return;
+      }
+
+      const raw = localStorage.getItem(projectScopedStorageKey);
       if (raw) {
         const data = JSON.parse(raw);
         if (Array.isArray(data.objects) && data.objects.length > 0) {
@@ -43,8 +66,10 @@ export default function PolicyCanvas({ config, rightPanel }: { config: CanvasCon
       }
     } catch (error) {
       console.error(error);
+    } finally {
+      hydratedProjectKey.current = projectKey;
     }
-  }, [config.storageKey]);
+  }, [config.storageKey, project.setup.projectNumber, project.studioStates, projectScopedStorageKey]);
 
   const selectedObject = useMemo(() => objects.find((object) => object.id === selectedId) ?? null, [objects, selectedId]);
 
@@ -85,13 +110,20 @@ export default function PolicyCanvas({ config, rightPanel }: { config: CanvasCon
 
   const resetCanvas = () => {
     setObjects(initialObjects);
-    setSelectedId(initialObjects[0].id);
+    setSelectedId(null);
     setZoom(1);
-    localStorage.removeItem(config.storageKey);
+    if (projectScopedStorageKey) {
+      localStorage.removeItem(projectScopedStorageKey);
+    }
+    updateStudioState(config.storageKey, { objects: [], zoom: 1, savedAt: new Date().toISOString() });
   };
 
   const saveCanvas = () => {
-    localStorage.setItem(config.storageKey, JSON.stringify({ objects, zoom, savedAt: new Date().toISOString() }));
+    const canvasState = { objects, zoom, savedAt: new Date().toISOString() };
+    if (projectScopedStorageKey) {
+      localStorage.setItem(projectScopedStorageKey, JSON.stringify(canvasState));
+    }
+    updateStudioState(config.storageKey, canvasState);
     setSaved("Progress saved.");
     setTimeout(() => setSaved(""), 2000);
   };
@@ -114,7 +146,7 @@ export default function PolicyCanvas({ config, rightPanel }: { config: CanvasCon
       <section className="panelCard" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 0.8fr)", gap: 24, alignItems: "center", padding: 28, marginBottom: 18 }}>
         <div>
           <h1 style={{ marginBottom: 8 }}>{config.studioTitle}</h1>
-          <h2 style={{ fontSize: "1.6rem", fontWeight: 600, color: "#42526b", marginBottom: 14, lineHeight: 1.25 }}>{config.studioSubtitle}</h2>
+          <h2 style={{ fontSize: "1.6rem", fontWeight: 600, color: "var(--hikma-blue)", marginBottom: 14, lineHeight: 1.25 }}>{config.studioSubtitle}</h2>
           <p className="hero-subtitle" style={{ marginBottom: 0 }}>
             Add policy objects to the canvas, organize them visually, use AI to create visual placeholders, and prepare content that can later flow into the poster and presentation.
           </p>
@@ -126,7 +158,7 @@ export default function PolicyCanvas({ config, rightPanel }: { config: CanvasCon
             <Link className="button secondaryButton" href={config.previousHref}>Previous Studio</Link>
             <Link className="button secondaryButton" href={config.dashboardHref}>Back to Dashboard</Link>
             <Link className="button" href={config.nextHref}>Next Studio</Link>
-            <button type="button" className="button" onClick={saveCanvas}>Save Progress</button>
+            <button type="button" className="button saveProgressButton" onClick={saveCanvas}>Save Progress</button>
           </div>
           {saved ? <div className="savedBanner" style={{ marginTop: 0 }}>{saved}</div> : null}
         </div>
@@ -169,22 +201,22 @@ export default function PolicyCanvas({ config, rightPanel }: { config: CanvasCon
         </aside>
 
         <section className="panelCard" style={{ padding: 0, overflow: "hidden" }}>
-          <div className="panelHeader" style={{ padding: 16, borderBottom: "1px solid rgba(15, 47, 102, 0.12)", marginBottom: 0 }}>
+          <div className="panelHeader" style={{ padding: 16, borderBottom: "1px solid rgba(43, 88, 118, 0.12)", marginBottom: 0 }}>
             <div>
               <h2>Policy Design Canvas</h2>
               <p className="fieldNote">Zoom, move, resize, duplicate, delete, recolor, and arrange cards. All cards remain visible.</p>
             </div>
           </div>
 
-          <div style={{ height: "760px", overflow: "auto", background: "#f8fafc", position: "relative" }} onClick={() => setSelectedId(null)}>
-            <div style={{ width: 1400, height: 1150, transform: `scale(${zoom})`, transformOrigin: "0 0", position: "relative", background: "linear-gradient(rgba(15,47,102,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,47,102,0.05) 1px, transparent 1px)", backgroundSize: "28px 28px" }}>
+          <div style={{ height: "760px", overflow: "auto", background: "var(--surface-blue)", position: "relative" }} onClick={() => setSelectedId(null)}>
+            <div style={{ width: 1400, height: 1150, transform: `scale(${zoom})`, transformOrigin: "0 0", position: "relative", backgroundImage: "linear-gradient(rgba(43,88,118,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(43,88,118,0.06) 1px, transparent 1px)", backgroundSize: "28px 28px" }}>
               {objects.map((object) => (
                 <PolicyObjectCard key={object.id} object={object} selected={selectedId === object.id} zoom={zoom} onSelect={setSelectedId} onUpdate={updateObject} onDelete={deleteObject} onDuplicate={duplicateObject} />
               ))}
             </div>
           </div>
 
-          <div style={{ padding: 12, borderTop: "1px solid rgba(15, 47, 102, 0.12)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ padding: 12, borderTop: "1px solid rgba(43, 88, 118, 0.12)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" className="button secondaryButton" onClick={() => addObject("sticky")}>+ Sticky</button>
               <button type="button" className="button secondaryButton" onClick={() => addObject("problem")}>+ Problem</button>
