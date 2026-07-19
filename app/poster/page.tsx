@@ -294,7 +294,7 @@ const themeMap: Record<ThemeName, { label: string; primary: string; accent: stri
 const placeholderTexts = ["describe", "add", "summarize", "placeholder"];
 
 export default function PosterStudioPage() {
-  const { project, importObjects, appendAlert } = useProject();
+  const { project, importObjects, appendAlert, updateStudioState } = useProject();
 
   const [posterHeader, setPosterHeader] = useState<PosterHeader>(initialHeader);
   const [blocks, setBlocks] = useState<PosterBlock[]>(initialBlocks);
@@ -317,10 +317,37 @@ export default function PosterStudioPage() {
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hydratedFromProject = useRef(false);
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId);
   const currentTheme = themeMap[theme];
 
   useEffect(() => {
+    const storedState = project.studioStates?.poster;
+
+    if (!hydratedFromProject.current && storedState && typeof storedState === "object") {
+      const parsed = storedState as {
+        posterHeader?: PosterHeader;
+        blocks?: PosterBlock[];
+        theme?: ThemeName;
+        posterSize?: PosterSize;
+        orientation?: Orientation;
+        savedAt?: string;
+      };
+
+      if (parsed.posterHeader) setPosterHeader(parsed.posterHeader);
+      if (Array.isArray(parsed.blocks)) setBlocks(parsed.blocks);
+      if (parsed.theme) setTheme(parsed.theme);
+      if (parsed.posterSize) setPosterSize(parsed.posterSize);
+      if (parsed.orientation) setOrientation(parsed.orientation);
+      if (parsed.savedAt) {
+        setLastSavedAt(parsed.savedAt);
+        setSavedStatus("Loaded saved work");
+      }
+
+      hydratedFromProject.current = true;
+      return;
+    }
+
     try {
       const raw = localStorage.getItem(POSTER_STORAGE_KEY);
       if (!raw) return;
@@ -337,21 +364,24 @@ export default function PosterStudioPage() {
     } catch (error) {
       console.error(error);
     }
-  }, []);
+  }, [project.studioStates]);
 
   const savePoster = (silent = false) => {
     const savedAt = new Date().toISOString();
+    const posterState = {
+      posterHeader,
+      blocks,
+      theme,
+      posterSize,
+      orientation,
+      savedAt,
+    };
+
     localStorage.setItem(
       POSTER_STORAGE_KEY,
-      JSON.stringify({
-        posterHeader,
-        blocks,
-        theme,
-        posterSize,
-        orientation,
-        savedAt,
-      })
+      JSON.stringify(posterState)
     );
+    updateStudioState("poster", posterState);
     setLastSavedAt(savedAt);
     setSavedStatus(silent ? "Auto-saved" : "Progress saved");
   };

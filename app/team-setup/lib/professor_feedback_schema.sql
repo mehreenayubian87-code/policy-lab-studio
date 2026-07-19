@@ -20,13 +20,19 @@ create table if not exists public.professor_feedback (
 
 alter table public.professor_feedback enable row level security;
 
-create policy if not exists "Allow inserts for authenticated users"
+drop policy if exists "Allow inserts for authenticated users"
+  on public.professor_feedback;
+
+create policy "Allow inserts for authenticated users"
   on public.professor_feedback
   for insert
   to authenticated
   with check (true);
 
-create policy if not exists "Allow select for authenticated users"
+drop policy if exists "Allow select for authenticated users"
+  on public.professor_feedback;
+
+create policy "Allow select for authenticated users"
   on public.professor_feedback
   for select
   to authenticated

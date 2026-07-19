@@ -2,12 +2,16 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { saveProjectState } from "./projectStorage";
+import {
+  buildProjectSnapshot,
+  saveProjectState,
+} from "./projectStorage";
 
 export type ProjectStudioId =
   | "problem"
@@ -61,6 +65,7 @@ export type ProjectSetup = {
 export type ProjectState = {
   setup: ProjectSetup;
   objects: ProjectObject[];
+  studioStates: Record<string, unknown>;
   notes: ProjectNote[];
   alerts: ProjectAlert[];
   updatedAt: string | null;
@@ -77,6 +82,7 @@ type ProjectContextValue = {
   replaceSetup: (setup: ProjectSetup) => void;
   replaceProject: (project: ProjectState) => void;
   importObjects: (objects: ProjectObject[]) => void;
+  updateStudioState: (studioId: string, state: unknown) => void;
   appendAlert: (studioId: string, studioName: string, message: string, note?: string) => void;
   clearProject: () => void;
 };
@@ -105,6 +111,7 @@ const initialSetup: ProjectSetup = {
 const initialProject: ProjectState = {
   setup: initialSetup,
   objects: [],
+  studioStates: {},
   notes: [],
   alerts: [],
   updatedAt: null,
@@ -219,6 +226,10 @@ export function ProjectProvider({
           objects: Array.isArray(parsed.objects)
             ? parsed.objects
             : [],
+          studioStates:
+            parsed.studioStates && typeof parsed.studioStates === "object"
+              ? parsed.studioStates
+              : {},
           notes: Array.isArray(parsed.notes) ? parsed.notes : [],
           alerts: normalizeAlerts(parsed.alerts),
           updatedAt:
@@ -239,6 +250,7 @@ export function ProjectProvider({
             objects: Array.isArray(oldParsed.objects)
               ? oldParsed.objects
               : [],
+            studioStates: {},
             notes: [],
             alerts: [],
             updatedAt:
@@ -273,10 +285,61 @@ export function ProjectProvider({
     if (!project.setup.projectNumber.trim()) return;
 
     try {
-      saveProjectState(project);
+      void saveProjectState(project);
     } catch (error) {
       console.error("Unable to persist project storage:", error);
     }
+  }, [hydrated, project]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!project.setup.projectNumber.trim()) return;
+
+    const flushProject = () => {
+      const projectSnapshot = buildProjectSnapshot(project);
+      const payload = JSON.stringify({ project: projectSnapshot });
+
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(projectSnapshot));
+      } catch (error) {
+        console.error("Unable to save project snapshot locally:", error);
+      }
+
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], {
+          type: "application/json",
+        });
+
+        if (navigator.sendBeacon("/api/projects", blob)) {
+          return;
+        }
+      }
+
+      void fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: payload,
+        keepalive: true,
+      }).catch((error) => {
+        console.error("Unable to flush project before unload:", error);
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushProject();
+      }
+    };
+
+    window.addEventListener("pagehide", flushProject);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", flushProject);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [hydrated, project]);
 
   const updateSetup = (
@@ -303,6 +366,10 @@ export function ProjectProvider({
       objects: Array.isArray(projectState.objects)
         ? projectState.objects
         : [],
+      studioStates:
+        projectState.studioStates && typeof projectState.studioStates === "object"
+          ? projectState.studioStates
+          : {},
       notes: Array.isArray(projectState.notes)
         ? projectState.notes
         : [],
@@ -343,6 +410,17 @@ export function ProjectProvider({
     });
   };
 
+  const updateStudioState = useCallback((studioId: string, state: unknown) => {
+    setProject((previous) => ({
+      ...previous,
+      studioStates: {
+        ...previous.studioStates,
+        [studioId]: state,
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
   const appendAlert = (
     studioId: string,
     studioName: string,
@@ -372,7 +450,7 @@ export function ProjectProvider({
     setProject((previous) => {
       if (previous.setup.projectNumber.trim()) {
         try {
-          saveProjectState(previous);
+          void saveProjectState(previous);
         } catch (error) {
           console.error("Unable to persist project before logout:", error);
         }
@@ -398,6 +476,7 @@ export function ProjectProvider({
       replaceSetup,
       replaceProject,
       importObjects,
+      updateStudioState,
       appendAlert,
       clearProject,
     }),

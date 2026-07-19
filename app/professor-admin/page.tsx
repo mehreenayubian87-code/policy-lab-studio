@@ -14,15 +14,13 @@ import {
   saveProjectState,
 } from "@/components/ProjectState/projectStorage";
 
-const ADMIN_USERNAME = "professor";
-const ADMIN_PASSWORD = "admin123";
-
 type ProjectSummary = {
   projectNumber: string;
   groupNumber: string;
   courseName: string;
   professorName: string;
   updatedAt: string;
+  alertCount?: number;
 };
 
 export default function ProfessorAdminPage() {
@@ -31,6 +29,8 @@ export default function ProfessorAdminPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectState | null>(null);
@@ -40,28 +40,52 @@ export default function ProfessorAdminPage() {
     [projects]
   );
 
-  const handleAdminLogin = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAdminLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setIsLoggingIn(true);
 
-    if (username.trim() === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      setIsAdminLoggedIn(true);
-      setProjects(listProjectSummaries());
-      setSelectedProject(null);
-      return;
+    try {
+      const response = await fetch("/api/professor-admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+
+      if (response.ok) {
+        setIsAdminLoggedIn(true);
+        setIsLoadingProjects(true);
+        setProjects(await listProjectSummaries());
+        setIsLoadingProjects(false);
+        setSelectedProject(null);
+        return;
+      }
+
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      setError(data?.error || "Invalid admin credentials.");
+    } catch {
+      setError("Admin login is currently unavailable.");
+    } finally {
+      setIsLoggingIn(false);
     }
-
-    setError("Use the fixed test admin credentials.");
   };
 
-  const handleSelectProject = (projectNumber: string) => {
-    const project = loadProjectByNumber(projectNumber);
+  const handleSelectProject = async (projectNumber: string) => {
+    const project = await loadProjectByNumber(projectNumber);
     if (project) {
       setSelectedProject(project);
     }
   };
 
-  const handleDeleteProject = () => {
+  const handleDeleteProject = async () => {
     if (!selectedProject) return;
 
     const confirmed = window.confirm(
@@ -70,22 +94,22 @@ export default function ProfessorAdminPage() {
 
     if (!confirmed) return;
 
-    const removed = deleteProjectState(selectedProject.setup.projectNumber);
+    const removed = await deleteProjectState(selectedProject.setup.projectNumber);
 
     if (removed) {
-      setProjects(listProjectSummaries());
+      setProjects(await listProjectSummaries());
       setSelectedProject(null);
     }
   };
 
-  const handleOpenProject = () => {
+  const handleOpenProject = async () => {
     if (!selectedProject) return;
 
     const clearedProject = { ...selectedProject, alerts: [] };
-    saveProjectState(clearedProject);
+    await saveProjectState(clearedProject);
     replaceProject(clearedProject);
     setSelectedProject(clearedProject);
-    setProjects(listProjectSummaries());
+    setProjects(await listProjectSummaries());
     router.push("/dashboard");
   };
 
@@ -99,7 +123,7 @@ export default function ProfessorAdminPage() {
         <h1>Admin access</h1>
 
         <p className="hero-subtitle">
-          Use the fixed test credentials to view all registered projects and inspect project progress.
+          Sign in to view all registered projects and inspect project progress.
         </p>
 
         {!isAdminLoggedIn ? (
@@ -123,15 +147,13 @@ export default function ProfessorAdminPage() {
               />
             </label>
 
-            <button type="submit" className="button">
-              Login as admin
+            <button type="submit" className="button" disabled={isLoggingIn}>
+              {isLoggingIn ? "Checking..." : "Login as admin"}
             </button>
 
             {error ? (
               <p style={{ color: "#b91c1c", margin: 0 }}>{error}</p>
             ) : null}
-
-            <p className="fieldNote">Test credentials: professor / admin123</p>
           </form>
         ) : (
           <div style={{ display: "grid", gap: 16 }}>
@@ -140,7 +162,10 @@ export default function ProfessorAdminPage() {
               <button
                 type="button"
                 className="button secondaryButton"
-                onClick={() => {
+                onClick={async () => {
+                  await fetch("/api/professor-admin/login", {
+                    method: "DELETE",
+                  }).catch(() => null);
                   setIsAdminLoggedIn(false);
                   setPassword("");
                   setUsername("");
@@ -151,15 +176,14 @@ export default function ProfessorAdminPage() {
               </button>
             </div>
 
-            {projects.length === 0 ? (
+            {isLoadingProjects ? (
+              <p className="fieldNote">Loading registered projects...</p>
+            ) : projects.length === 0 ? (
               <p className="fieldNote">No registered projects yet.</p>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
                 {sortedProjects.map((project) => {
-                  const projectData = loadProjectByNumber(project.projectNumber);
-                  const hasAlerts = Boolean(
-                    projectData && Array.isArray(projectData.alerts) && projectData.alerts.length > 0
-                  );
+                  const hasAlerts = Boolean(project.alertCount && project.alertCount > 0);
 
                   return (
                     <button

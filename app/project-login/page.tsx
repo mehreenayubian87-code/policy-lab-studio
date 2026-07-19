@@ -10,6 +10,7 @@ export default function ProjectLoginPage() {
   const [projectNumber, setProjectNumber] = useState("");
   const [projectPassword, setProjectPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const { replaceProject } = useProject();
   const router = useRouter();
 
@@ -22,10 +23,12 @@ export default function ProjectLoginPage() {
       return;
     }
 
-    const storedProject = loadProjectByNumberAndPassword(
+    setIsLoading(true);
+
+    const storedProject = await loadProjectByNumberAndPassword(
       projectNumber,
       projectPassword
-    );
+    ).finally(() => setIsLoading(false));
 
     if (!storedProject) {
       setError("Project not found or password is incorrect.");
@@ -69,8 +72,8 @@ export default function ProjectLoginPage() {
             />
           </label>
 
-          <button type="submit" className="button">
-            Load project
+          <button type="submit" className="button" disabled={isLoading}>
+            {isLoading ? "Loading..." : "Load project"}
           </button>
 
           {error ? (

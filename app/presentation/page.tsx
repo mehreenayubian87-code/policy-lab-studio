@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./presentation.module.css";
 import {
   buildPosterContent,
   readAllStudioObjects,
 } from "@/components/ProjectState/projectService";
+import { useProject } from "@/components/ProjectState/ProjectProvider";
 
 type PosterBlock = {
   id: string;
@@ -110,6 +111,7 @@ const buildDefaultScript = (title: string, content: string) => {
 };
 
 export default function PresentationStudioPage() {
+  const { project, updateStudioState } = useProject();
   const [posterHeader, setPosterHeader] =
     useState<PosterHeader>(defaultPosterHeader);
   const [exportItems, setExportItems] = useState<ExportItem[]>([]);
@@ -118,6 +120,7 @@ export default function PresentationStudioPage() {
   const [activeSection, setActiveSection] = useState<
     "export" | "script" | "qa" | null
   >("export");
+  const hydratedFromProject = useRef(false);
   const [lastSaved, setLastSaved] = useState("Not saved yet");
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -132,6 +135,26 @@ export default function PresentationStudioPage() {
   );
 
   useEffect(() => {
+    const storedState = project.studioStates?.presentation;
+
+    if (!hydratedFromProject.current && storedState && typeof storedState === "object") {
+      const parsed = storedState as {
+        posterHeader?: PosterHeader;
+        exportItems?: ExportItem[];
+        pitchSections?: PitchSection[];
+        questions?: JudgeQuestion[];
+        lastSaved?: string;
+      };
+
+      setPosterHeader(parsed.posterHeader || defaultPosterHeader);
+      setExportItems(parsed.exportItems || []);
+      setPitchSections(parsed.pitchSections || []);
+      setQuestions(parsed.questions || []);
+      setLastSaved(parsed.lastSaved || "Loaded saved presentation.");
+      hydratedFromProject.current = true;
+      return;
+    }
+
     const saved = localStorage.getItem(PRESENTATION_STORAGE_KEY);
 
     if (saved) {
@@ -149,7 +172,7 @@ export default function PresentationStudioPage() {
     }
 
     importFromPoster();
-  }, []);
+  }, [project.studioStates]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -296,17 +319,19 @@ export default function PresentationStudioPage() {
 
   const saveProgress = (message = "Saved") => {
     const savedAt = new Date().toLocaleTimeString();
+    const presentationState = {
+      posterHeader,
+      exportItems,
+      pitchSections,
+      questions,
+      lastSaved: `${message} at ${savedAt}`,
+    };
 
     localStorage.setItem(
       PRESENTATION_STORAGE_KEY,
-      JSON.stringify({
-        posterHeader,
-        exportItems,
-        pitchSections,
-        questions,
-        lastSaved: `${message} at ${savedAt}`,
-      })
+      JSON.stringify(presentationState)
     );
+    updateStudioState("presentation", presentationState);
 
     setLastSaved(`${message} at ${savedAt}`);
     setStatusMessage(`${message} successfully.`);

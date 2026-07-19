@@ -25,6 +25,8 @@ export default function TeamSetupPage() {
 
   const [teamLead, setTeamLead] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   function updateStudent(index: number, key: keyof ProjectStudent, value: string) {
     setStudents((prev) =>
@@ -54,8 +56,10 @@ export default function TeamSetupPage() {
     setSubmitted(false);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!canSubmit) return;
+    setIsSaving(true);
+    setSaveError("");
 
     const normalizedStudents: ProjectStudent[] = [...students]
       .slice(0, 5)
@@ -79,13 +83,21 @@ export default function TeamSetupPage() {
         teamLead: teamLead,
       },
       objects: [],
+      studioStates: {},
       notes: [],
       alerts: [],
       updatedAt: new Date().toISOString(),
     };
 
     try {
-      saveProjectState(project);
+      const saved = await saveProjectState(project);
+      if (!saved) {
+        setSaveError(
+          "Team was saved in this browser, but Supabase did not confirm the save."
+        );
+        return;
+      }
+
       // Clear the visible form fields after registration
       setProjectNumber("");
       setProjectPassword("");
@@ -95,6 +107,9 @@ export default function TeamSetupPage() {
       setSubmitted(true);
     } catch (error) {
       console.error("Unable to save project:", error);
+      setSaveError("Unable to save this team.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -158,9 +173,13 @@ export default function TeamSetupPage() {
             </div>
 
             <div style={{ display: "flex", gap: 12 }}>
-              <button type="button" className="button" onClick={handleSubmit} disabled={!canSubmit}>Register Team</button>
+              <button type="button" className="button" onClick={handleSubmit} disabled={!canSubmit || isSaving}>{isSaving ? "Saving..." : "Register Team"}</button>
               <Link href="/" className="button secondaryButton">Cancel</Link>
             </div>
+
+            {saveError ? (
+              <p style={{ color: "#b91c1c", margin: 0 }}>{saveError}</p>
+            ) : null}
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12, marginTop: 18 }}>

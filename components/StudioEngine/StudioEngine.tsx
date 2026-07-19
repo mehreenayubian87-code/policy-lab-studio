@@ -1,7 +1,7 @@
 "use client";
 
 import StudioResources from "@/components/ResourceHub/StudioResources";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import StudioShell from "@/components/StudioLayout/StudioShell";
 import type {
@@ -106,7 +106,8 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const [chartTitle, setChartTitle] = useState("Chart / Graph");
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
   const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
-  const { project, appendAlert } = useProject();
+  const { project, appendAlert, updateStudioState } = useProject();
+  const hydratedFromProject = useRef(false);
   const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>(initialStudioState.checklistState);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -127,6 +128,40 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
     () => objects.find((object) => object.id === selectedId) ?? null,
     [objects, selectedId]
   );
+
+  useEffect(() => {
+    if (hydratedFromProject.current) return;
+
+    const storedState = project.studioStates?.[config.studioId];
+    if (!storedState || typeof storedState !== "object") return;
+
+    const data = storedState as {
+      objects?: StudioObject[];
+      connections?: StudioConnection[];
+      zoom?: number;
+      checklistState?: Record<string, boolean>;
+      studentName?: string;
+      feedbackEmail?: string;
+      profQuestion?: string;
+      feedbackStatus?: string;
+    };
+
+    if (Array.isArray(data.objects)) {
+      setObjects(data.objects);
+      setSelectedId(data.objects[0]?.id ?? null);
+    }
+    if (Array.isArray(data.connections)) setConnections(data.connections);
+    if (typeof data.zoom === "number") setZoom(data.zoom);
+    if (data.checklistState && typeof data.checklistState === "object") {
+      setChecklistState(data.checklistState);
+    }
+    if (typeof data.studentName === "string") setStudentName(data.studentName);
+    if (typeof data.feedbackEmail === "string") setFeedbackEmail(data.feedbackEmail);
+    if (typeof data.profQuestion === "string") setProfQuestion(data.profQuestion);
+    if (typeof data.feedbackStatus === "string") setFeedbackStatus(data.feedbackStatus);
+
+    hydratedFromProject.current = true;
+  }, [config.studioId, project.studioStates]);
 
   const handleSelectObject = (id: string, multiSelect: boolean) => {
   setSelectedId(id);
@@ -402,6 +437,40 @@ const deleteConnection = (id: string) => {
     setSaved("Progress saved.");
     setTimeout(() => setSaved(""), 2000);
   };
+
+  useEffect(() => {
+    const studioState = {
+      objects,
+      connections,
+      zoom,
+      checklistState,
+      studentName,
+      feedbackEmail,
+      profQuestion,
+      feedbackStatus,
+      savedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(config.storageKey, JSON.stringify(studioState));
+
+    const timer = window.setTimeout(() => {
+      updateStudioState(config.studioId, studioState);
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    objects,
+    connections,
+    zoom,
+    checklistState,
+    studentName,
+    feedbackEmail,
+    profQuestion,
+    feedbackStatus,
+    config.storageKey,
+    config.studioId,
+    updateStudioState,
+  ]);
 
   const handleStudioAlert = () => {
     const message = `Please review a change or query in ${config.title} for project ${project.setup.projectNumber || project.setup.policyIssue || "this team"}.`;
