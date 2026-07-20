@@ -335,6 +335,89 @@
   box-shadow: inset 4px 0 0 #5eead4;
 }
 
+.elementImportList {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.elementStudioGroup {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.elementStudioGroup h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.elementCheckboxList {
+  display: grid;
+  gap: 7px;
+}
+
+.elementCheckboxRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(8, 19, 33, 0.24);
+  color: #d9f2eb;
+}
+
+.elementCheckboxRow input {
+  margin-top: 2px;
+  accent-color: #f6ad55;
+}
+
+.elementCheckboxRow span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.elementCheckboxRow strong {
+  color: #ffffff;
+  font-size: 12.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.elementCheckboxRow small {
+  color: #b9d8d1;
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.emptyElementMessage {
+  margin: 0;
+  color: #b9d8d1;
+  font-size: 12px;
+}
+
+.leftPanel :global(.button).elementImportButton {
+  background: linear-gradient(135deg, #f6ad55, #d4a574);
+  border-color: rgba(255, 237, 213, 0.78);
+  color: #14213d !important;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(48, 32, 18, 0.28);
+}
+
+.leftPanel :global(.button).elementImportButton:hover {
+  background: linear-gradient(135deg, #fbbf24, #d4a574);
+  color: #081321 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(48, 32, 18, 0.34);
+}
+
 .compactGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -413,6 +496,21 @@
 .editorBox textarea,
 .editorBox select {
   font-size: 13px;
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: rgba(43, 88, 118, 0.28) !important;
+  caret-color: #111827;
+}
+
+.editorBox input::placeholder,
+.editorBox textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1;
+}
+
+.editorBox option {
+  color: #111827;
+  background: #ffffff;
 }
 
 .twoButtonRow {
@@ -516,12 +614,134 @@
   overflow: hidden;
   cursor: pointer;
   transition: border 0.15s ease, background 0.15s ease;
+  color: var(--hikma-ink) !important;
+  background-clip: padding-box;
 }
 
 .posterBlock p {
   line-height: 1.5;
   margin: 0;
   font-size: 14px;
+  color: var(--hikma-ink) !important;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.posterBlock > p,
+.posterBlock:not(.importedBlock) > p,
+.posterBlock:not(.importedBlock) .chartPreview,
+.posterBlock:not(.importedBlock) .iconPreview,
+.posterBlock:not(.importedBlock) .chartPreview span,
+.posterBlock:not(.importedBlock) .iconPreview span {
+  color: #111827 !important;
+  text-shadow: none !important;
+}
+
+.posterBlock:not(.importedBlock) > p {
+  background: rgba(255, 255, 255, 0.38);
+  border-radius: 6px;
+  padding: 8px;
+  max-height: calc(100% - 42px);
+  overflow: auto;
+}
+
+.calloutBlock {
+  background-image:
+    linear-gradient(90deg, rgba(246, 173, 85, 0.34), transparent 46%),
+    radial-gradient(circle at 94% 12%, rgba(30, 58, 95, 0.12), transparent 26%);
+}
+
+.calloutBlock .blockTitleRow {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(142, 83, 24, 0.22);
+}
+
+.calloutBlock .blockTitleRow span {
+  box-shadow: 0 0 0 4px rgba(246, 173, 85, 0.22);
+}
+
+.calloutBlock .blockTitleRow strong {
+  color: #7c3f10 !important;
+}
+
+.calloutBlock > p {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-left: 5px solid #d4a574;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.importedBlock {
+  overflow: auto;
+  color: #111827 !important;
+  scrollbar-width: thin;
+}
+
+.importedBlock,
+.importedBlock p,
+.importedBlock span,
+.importedBlock strong,
+.importedBlock div {
+  color: #111827 !important;
+  text-shadow: none !important;
+}
+
+.importedBlock .blockTitleRow strong {
+  color: #0b2f37 !important;
+}
+
+.importedBlock .blockTitleRow span {
+  color: #ffffff !important;
+}
+
+.importedTextContent {
+  max-height: calc(100% - 42px);
+  overflow: auto;
+  color: #111827 !important;
+  background: rgba(255, 255, 255, 0.34);
+  border-radius: 6px;
+  padding: 8px;
+  scrollbar-width: thin;
+}
+
+.importedCompositeContent {
+  height: calc(100% - 42px);
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(42px, auto) minmax(0, 1fr);
+  gap: 8px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.importedCompositeContent .importedTextContent {
+  max-height: 120px;
+}
+
+.embeddedVisualList {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.embeddedVisualPreview {
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(43, 88, 118, 0.2);
+  padding: 8px;
+}
+
+.embeddedVisualPreview img {
+  width: 100%;
+  height: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  display: block;
 }
 
 .blockTitleRow {
@@ -543,8 +763,53 @@
 }
 
 .blockTitleRow strong {
-  color: var(--hikma-blue-dark);
+  color: var(--hikma-blue-dark) !important;
   font-size: 14px;
+}
+
+.resizeHandle {
+  position: absolute;
+  z-index: 4;
+  border: none;
+  padding: 0;
+  background: rgba(30, 58, 95, 0.46);
+  cursor: pointer;
+}
+
+.resizeHandleRight {
+  top: 26px;
+  right: 2px;
+  width: 10px;
+  height: calc(100% - 52px);
+  min-height: 42px;
+  border-radius: 999px;
+  cursor: ew-resize;
+}
+
+.resizeHandleBottom {
+  left: 26px;
+  bottom: 2px;
+  width: calc(100% - 52px);
+  min-width: 42px;
+  height: 10px;
+  border-radius: 999px;
+  cursor: ns-resize;
+}
+
+.resizeHandleCorner {
+  right: 2px;
+  bottom: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 44%, rgba(30, 58, 95, 0.68) 44%, rgba(30, 58, 95, 0.68) 56%, rgba(246, 173, 85, 0.95) 56%);
+  box-shadow: 0 4px 12px rgba(3, 7, 18, 0.18);
+}
+
+.resizeHandle:hover {
+  background-color: rgba(30, 58, 95, 0.72);
 }
 
 .imageDrop {
@@ -597,20 +862,78 @@
   height: calc(100% - 52px);
   display: grid;
   gap: 8px;
-  place-items: center;
+  place-items: start center;
   text-align: center;
-  color: var(--hikma-ink);
+  color: var(--hikma-ink) !important;
+  background: rgba(255, 248, 231, 0.92);
+  border: 1px solid rgba(43, 88, 118, 0.24);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.posterChartSvg {
+  width: 100%;
+  min-height: 140px;
+}
+
+.posterChartBars {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.posterChartRow {
+  display: grid;
+  gap: 4px;
+}
+
+.posterChartLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.posterChartTrack {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(212, 165, 116, 0.24);
+  overflow: hidden;
+}
+
+.posterChartTrack i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--hikma-blue-dark);
+}
+
+.chartPreview *,
+.iconPreview * {
+  color: var(--hikma-ink) !important;
+}
+
+.chartPreview strong,
+.iconPreview strong {
+  color: var(--hikma-blue-dark) !important;
 }
 
 .chartPreview span,
 .iconPreview span {
+  display: block;
   font-size: 12px;
   line-height: 1.35;
+  color: var(--hikma-ink) !important;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .iconPreview div {
   font-size: 42px;
-  color: var(--hikma-blue-dark);
+  color: var(--hikma-blue-dark) !important;
 }
 
 .miniBars {

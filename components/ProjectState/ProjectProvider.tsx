@@ -11,6 +11,7 @@ import {
 import {
   buildProjectSnapshot,
   saveProjectState,
+  trySetLocalStorageItem,
 } from "./projectStorage";
 
 export type ProjectStudioId =
@@ -26,6 +27,23 @@ export type ProjectObject = {
   type: string;
   content: string;
   studioId: ProjectStudioId;
+  color?: string;
+  width?: number;
+  height?: number;
+  icon?: string;
+  imageDataUrl?: string;
+  visualType?: "image" | "chart" | "icon";
+  chartType?: "bar" | "line" | "pie" | "scatter";
+  chartData?: Array<{ label: string; value: number }>;
+  embeddedVisuals?: Array<{
+    id: string;
+    insertIndex?: number;
+    imageDataUrl?: string;
+    visualType?: "image" | "chart";
+    chartType?: "bar" | "line" | "pie" | "scatter";
+    chartData?: Array<{ label: string; value: number }>;
+    icon?: string;
+  }>;
 };
 
 export type ProjectStudent = {
@@ -88,6 +106,7 @@ type ProjectContextValue = {
 };
 
 const STORAGE_KEY = "policy_lab_project_state_v2";
+const MAX_KEEPALIVE_PAYLOAD_BYTES = 60000;
 
 const initialSetup: ProjectSetup = {
   projectId: crypto.randomUUID(),
@@ -270,7 +289,7 @@ export function ProjectProvider({
                     ? data.project.updatedAt
                     : null,
               });
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.project));
+              trySetLocalStorageItem(STORAGE_KEY, JSON.stringify(data.project));
               return;
             }
           } catch (error) {
@@ -336,7 +355,7 @@ export function ProjectProvider({
     if (!hydrated) return;
 
     try {
-      localStorage.setItem(
+      trySetLocalStorageItem(
         STORAGE_KEY,
         JSON.stringify(project)
       );
@@ -365,7 +384,7 @@ export function ProjectProvider({
       const payload = JSON.stringify({ project: projectSnapshot });
 
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(projectSnapshot));
+        trySetLocalStorageItem(STORAGE_KEY, JSON.stringify(projectSnapshot));
       } catch (error) {
         console.error("Unable to save project snapshot locally:", error);
       }
@@ -380,6 +399,10 @@ export function ProjectProvider({
         }
       }
 
+      if (new Blob([payload]).size > MAX_KEEPALIVE_PAYLOAD_BYTES) {
+        return;
+      }
+
       void fetch("/api/projects", {
         method: "POST",
         headers: {
@@ -388,6 +411,13 @@ export function ProjectProvider({
         body: payload,
         keepalive: true,
       }).catch((error) => {
+        if (
+          error instanceof TypeError &&
+          error.message.toLowerCase().includes("failed to fetch")
+        ) {
+          return;
+        }
+
         console.error("Unable to flush project before unload:", error);
       });
     };

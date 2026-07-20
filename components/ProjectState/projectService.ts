@@ -6,6 +6,23 @@ type StoredStudioObject = {
   type: string;
   content?: string;
   createdIn?: string;
+  color?: string;
+  width?: number;
+  height?: number;
+  icon?: string;
+  imageDataUrl?: string;
+  visualType?: "image" | "chart" | "icon";
+  chartType?: "bar" | "line" | "pie" | "scatter";
+  chartData?: Array<{ label: string; value: number }>;
+  embeddedVisuals?: Array<{
+    id: string;
+    insertIndex?: number;
+    imageDataUrl?: string;
+    visualType?: "image" | "chart";
+    chartType?: "bar" | "line" | "pie" | "scatter";
+    chartData?: Array<{ label: string; value: number }>;
+    icon?: string;
+  }>;
 };
 
 type StoredStudioState = {
@@ -38,6 +55,15 @@ export function readStudioObjects(
       type: object.type,
       content: object.content ?? "",
       studioId,
+      color: object.color,
+      width: object.width,
+      height: object.height,
+      icon: object.icon,
+      imageDataUrl: object.imageDataUrl,
+      visualType: object.visualType,
+      chartType: object.chartType,
+      chartData: object.chartData,
+      embeddedVisuals: object.embeddedVisuals,
     }));
   } catch (error) {
     console.error(error);
@@ -69,13 +95,28 @@ export function readAllStudioObjectsFromProject(project: ProjectState): ProjectO
         ? (state as StoredStudioState).objects ?? []
         : [];
 
-    return objects.map((object) => ({
-      id: object.id,
-      title: object.title,
-      type: object.type,
-      content: object.content ?? "",
-      studioId,
-    }));
+    return objects.flatMap((object) => {
+      const projectObjects: ProjectObject[] = [
+        {
+          id: object.id,
+          title: object.title,
+          type: object.type,
+          content: [object.icon, object.content].filter(Boolean).join(" ").trim(),
+          studioId,
+          color: object.color,
+          width: object.width,
+          height: object.height,
+          icon: object.icon,
+          imageDataUrl: object.imageDataUrl,
+          visualType: object.visualType,
+          chartType: object.chartType,
+          chartData: object.chartData,
+          embeddedVisuals: object.embeddedVisuals,
+        },
+      ];
+
+      return projectObjects.filter((object) => object.content.trim());
+    });
   });
 }
 
@@ -91,9 +132,31 @@ export function getObjectsByType(objects: ProjectObject[], type: string) {
 }
 
 export function buildPosterContent(objects: ProjectObject[]) {
+  const hasEmbeddedVisual = (
+    object: ProjectObject,
+    visualType: "image" | "chart"
+  ) =>
+    object.embeddedVisuals?.some(
+      (visual) =>
+        visual.visualType === visualType ||
+        (visualType === "image" && Boolean(visual.imageDataUrl)) ||
+        (visualType === "chart" && Boolean(visual.chartData?.length))
+    );
+
   const findByTypes = (types: string[]) =>
     objects
       .filter((object) => types.includes(object.type))
+      .map((object) => `${object.title}: ${object.content}`)
+      .filter(Boolean)
+      .join("\n\n");
+  const findByVisual = (visualType: "image" | "chart" | "icon") =>
+    objects
+      .filter((object) =>
+        object.visualType === visualType ||
+        (visualType === "image" && (Boolean(object.imageDataUrl) || hasEmbeddedVisual(object, "image"))) ||
+        (visualType === "chart" && (Boolean(object.chartData?.length) || hasEmbeddedVisual(object, "chart"))) ||
+        (visualType === "icon" && Boolean(object.icon))
+      )
       .map((object) => `${object.title}: ${object.content}`)
       .filter(Boolean)
       .join("\n\n");
@@ -106,6 +169,15 @@ export function buildPosterContent(objects: ProjectObject[]) {
     solution: findByTypes(["idea", "theoryOfChange"]),
     implementation: findByTypes(["timeline", "budget"]),
     risks: findByTypes(["risk", "mitigation"]),
-    indicators: findByTypes(["indicator", "chart"]),
+    indicators: [findByTypes(["indicator", "chart"]), findByVisual("chart")]
+      .filter(Boolean)
+      .join("\n\n"),
+    images: [findByTypes(["image", "aiVisual"]), findByVisual("image")]
+      .filter(Boolean)
+      .join("\n\n"),
+    icons: [findByTypes(["icon", "aiVisual"]), findByVisual("icon")]
+      .filter(Boolean)
+      .join("\n\n"),
+    personas: findByTypes(["persona"]),
   };
 }

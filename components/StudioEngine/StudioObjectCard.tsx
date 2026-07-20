@@ -53,6 +53,10 @@ export default function StudioObjectCard({
   const contentCursor = useRef({ start: object.content.length, end: object.content.length });
   const actionStatusTimer = useRef<number | null>(null);
   const [actionStatus, setActionStatus] = useState("");
+  const minimumWidth = object.type === "sticky" ? 240 : 120;
+  const minimumHeight = object.type === "sticky" ? 180 : 90;
+  const renderedWidth = Math.max(object.width, minimumWidth);
+  const renderedHeight = Math.max(object.height, minimumHeight);
   const embeddedImageHeight = Math.max(140, Math.min(520, Math.round(object.height * 0.58)));
   const embeddedChartHeight = Math.max(120, Math.min(360, Math.round(object.height * 0.44)));
 
@@ -204,9 +208,14 @@ export default function StudioObjectCard({
     window.addEventListener("pointerup", onUp);
   };
 
-  const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const startResize = (
+    event: React.PointerEvent<HTMLElement>,
+    direction: "right" | "bottom" | "corner" = "corner"
+  ) => {
     event.stopPropagation();
+    event.preventDefault();
     if (object.locked) return;
+    notifyAction("Resizing");
 
     const startX = event.clientX;
     const startY = event.clientY;
@@ -218,14 +227,21 @@ export default function StudioObjectCard({
       const dy = (moveEvent.clientY - startY) / zoom;
 
       onUpdate(object.id, {
-        width: Math.max(120, snapToGrid(originalWidth + dx)),
-        height: Math.max(90, snapToGrid(originalHeight + dy)),
+        width:
+          direction === "bottom"
+            ? originalWidth
+            : Math.max(minimumWidth, snapToGrid(originalWidth + dx)),
+        height:
+          direction === "right"
+            ? originalHeight
+            : Math.max(minimumHeight, snapToGrid(originalHeight + dy)),
       });
     };
 
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      notifyAction("Resized");
     };
 
     window.addEventListener("pointermove", onMove);
@@ -643,8 +659,8 @@ export default function StudioObjectCard({
         position: "absolute",
         left: object.x,
         top: object.y,
-        width: object.width,
-        height: object.height,
+        width: renderedWidth,
+        height: renderedHeight,
         background: object.color,
         borderRadius: 10,
         padding: 14,
@@ -664,6 +680,29 @@ export default function StudioObjectCard({
         zIndex: selected ? 20 : 10,
       }}
     >
+      {!object.locked ? (
+        <>
+          <div
+            aria-hidden="true"
+            onPointerDown={(event) => startResize(event, "right")}
+            style={rightResizeHandleStyle}
+            title="Drag right edge to resize"
+          />
+          <div
+            aria-hidden="true"
+            onPointerDown={(event) => startResize(event, "bottom")}
+            style={bottomResizeHandleStyle}
+            title="Drag bottom edge to resize"
+          />
+          <div
+            aria-hidden="true"
+            onPointerDown={(event) => startResize(event, "corner")}
+            style={cornerResizeHandleStyle}
+            title="Drag corner to resize"
+          />
+        </>
+      ) : null}
+
       <div
         style={{
           display: "flex",
@@ -795,18 +834,19 @@ export default function StudioObjectCard({
 
         <button
           type="button"
-          onPointerDown={startResize}
+          onPointerDown={(event) => startResize(event, "corner")}
           style={{
-            border: "none",
-            background: "rgba(212,165,116,0.22)",
-            color: "#1e3a5f",
-            borderRadius: 8,
-            width: 26,
-            height: 26,
+            border: "1px solid rgba(30, 58, 95, 0.22)",
+            background: "linear-gradient(135deg, rgba(246,173,85,0.95), rgba(212,165,116,0.92))",
+            color: "#14213d",
+            borderRadius: 10,
+            width: 34,
+            height: 30,
             cursor: object.locked ? "not-allowed" : "nwse-resize",
             fontWeight: 900,
+            boxShadow: "0 8px 16px rgba(3, 7, 18, 0.14)",
           }}
-          title="Resize"
+          title="Drag to resize card"
           disabled={object.locked}
         >
           ↘
@@ -845,6 +885,45 @@ const actionStatusStyle: CSSProperties = {
   lineHeight: 1,
   boxShadow: "0 8px 18px rgba(3, 7, 18, 0.2)",
   pointerEvents: "none",
+};
+
+const resizeHandleBaseStyle: CSSProperties = {
+  position: "absolute",
+  zIndex: 5,
+  opacity: 0.78,
+  touchAction: "none",
+};
+
+const rightResizeHandleStyle: CSSProperties = {
+  ...resizeHandleBaseStyle,
+  top: 44,
+  right: 0,
+  bottom: 44,
+  width: 8,
+  cursor: "ew-resize",
+  background: "linear-gradient(180deg, transparent, rgba(246,173,85,0.72), transparent)",
+};
+
+const bottomResizeHandleStyle: CSSProperties = {
+  ...resizeHandleBaseStyle,
+  left: 44,
+  right: 44,
+  bottom: 0,
+  height: 8,
+  cursor: "ns-resize",
+  background: "linear-gradient(90deg, transparent, rgba(246,173,85,0.72), transparent)",
+};
+
+const cornerResizeHandleStyle: CSSProperties = {
+  ...resizeHandleBaseStyle,
+  right: 0,
+  bottom: 0,
+  width: 24,
+  height: 24,
+  cursor: "nwse-resize",
+  borderBottomRightRadius: 10,
+  background:
+    "linear-gradient(135deg, transparent 48%, rgba(20,33,61,0.42) 48%, rgba(20,33,61,0.42) 56%, rgba(246,173,85,0.95) 56%)",
 };
 
 const smallSelectStyle: CSSProperties = {

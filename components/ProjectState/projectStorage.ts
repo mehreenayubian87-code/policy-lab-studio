@@ -3,6 +3,7 @@ import type { ProjectState } from "./ProjectProvider";
 const PROJECTS_INDEX_KEY = "policy_lab_projects_v2";
 const PROJECT_STORAGE_PREFIX = "policy_lab_project_v2_";
 const ACTIVE_PROJECT_STORAGE_KEY = "policy_lab_project_state_v2";
+const MAX_LOCAL_STORAGE_VALUE_BYTES = 1_500_000;
 const STUDIO_STORAGE_KEYS: Record<string, string> = {
   problem: "plstudio_problem_engine_v1",
   process: "plstudio_process_engine_v1",
@@ -69,6 +70,31 @@ function saveProjectIndex(index: ProjectIndex) {
     );
   } catch (error) {
     console.error("Unable to save project index:", error);
+  }
+}
+
+export function trySetLocalStorageItem(key: string, value: string) {
+  try {
+    if (new Blob([value]).size > MAX_LOCAL_STORAGE_VALUE_BYTES) {
+      localStorage.removeItem(key);
+      return false;
+    }
+
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    const isQuotaError =
+      error instanceof DOMException &&
+      (error.name === "QuotaExceededError" ||
+        error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+
+    if (isQuotaError) {
+      localStorage.removeItem(key);
+      return false;
+    }
+
+    console.error("Unable to save local storage item:", error);
+    return false;
   }
 }
 
@@ -195,7 +221,7 @@ function rebuildProjectIndexFromStoredProjects(index: ProjectIndex) {
 
     if (activeProject && activeProjectNumber && !index[activeProjectNumber]) {
       index[activeProjectNumber] = buildProjectIndexEntry(activeProject);
-      localStorage.setItem(
+      trySetLocalStorageItem(
         getStorageKey(activeProjectNumber),
         JSON.stringify(activeProject)
       );
@@ -256,7 +282,7 @@ export async function saveProjectState(project: ProjectState) {
     }>(response);
 
     if (data?.ok && data.project) {
-      localStorage.setItem(
+      trySetLocalStorageItem(
         getStorageKey(projectNumber),
         JSON.stringify(data.project)
       );
@@ -284,7 +310,7 @@ export async function loadProjectByNumber(projectNumber: string) {
     }>(response);
 
     if (data?.project) {
-      localStorage.setItem(
+      trySetLocalStorageItem(
         getStorageKey(normalized),
         JSON.stringify(data.project)
       );
@@ -321,7 +347,7 @@ export async function loadProjectByNumberAndPassword(
     }>(response);
 
     if (data?.project) {
-      localStorage.setItem(
+      trySetLocalStorageItem(
         getStorageKey(normalized),
         JSON.stringify(data.project)
       );

@@ -3,11 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
+import type { ProjectObject } from "@/components/ProjectState/ProjectProvider";
 import {
   buildPosterContent,
   readAllStudioObjectsFromProject,
 } from "@/components/ProjectState/projectService";
-import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
+import {
+  getProjectStudioStorageKey,
+  trySetLocalStorageItem,
+} from "@/components/ProjectState/projectStorage";
 import styles from "./poster.module.css";
 
 type PosterBlockKind =
@@ -35,6 +39,20 @@ type PosterBlock = {
   caption?: string;
   altText?: string;
   borderStyle?: "none" | "rounded" | "shadow" | "frame";
+  imported?: boolean;
+  sourceColor?: string;
+  icon?: string;
+  chartType?: "bar" | "line" | "pie" | "scatter";
+  chartData?: Array<{ label: string; value: number }>;
+  embeddedVisuals?: Array<{
+    id: string;
+    insertIndex?: number;
+    imageDataUrl?: string;
+    visualType?: "image" | "chart";
+    chartType?: "bar" | "line" | "pie" | "scatter";
+    chartData?: Array<{ label: string; value: number }>;
+    icon?: string;
+  }>;
 };
 
 type PosterHeader = {
@@ -75,21 +93,6 @@ const initialHeader: PosterHeader = {
 
 const initialBlocks: PosterBlock[] = [];
 
-const posterSections = [
-  ["header", "Header", "Title, logo, subtitle"],
-  ["problem", "Problem", "Problem statement"],
-  ["evidence", "Evidence", "Key data & statistics"],
-  ["population", "Target Population", "Users / Beneficiaries"],
-  ["stakeholders", "Stakeholders", "Key actors & system"],
-  ["solution", "Solution", "Proposed Solution"],
-  ["journey", "User Journey", "User journey"],
-  ["implementation", "Implementation", "Key activities"],
-  ["timeline", "Timeline", "Phases & milestones"],
-  ["indicators", "Dashboard", "Indicators / metrics"],
-  ["funding", "Funding", "Cost & resources"],
-  ["partners", "Partners", "Collaborators"],
-] as const;
-
 const importOptions = [
   ["problem", "Problem Statement"],
   ["evidence", "Evidence"],
@@ -104,15 +107,19 @@ const importOptions = [
   ["personas", "Personas"],
 ] as const;
 
+const sourceStudios = [
+  ["problem", "Problem Studio"],
+  ["process", "Process Studio"],
+  ["solution", "Solution Studio"],
+  ["implementation", "Implementation Studio"],
+] as const;
+
 const sideTabs: { icon: string; label: SideTab }[] = [
   { icon: "🏠", label: "Home" },
   { icon: "🧩", label: "Elements" },
-  { icon: "T", label: "Text" },
-  { icon: "🖼️", label: "Visuals" },
   { icon: "▦", label: "Layout" },
   { icon: "🎨", label: "Theme" },
   { icon: "⬆", label: "Import" },
-  { icon: "🤖", label: "Coach" },
 ];
 
 const themeMap: Record<ThemeName, { label: string; primary: string; accent: string; bg: string }> = {
@@ -124,6 +131,53 @@ const themeMap: Record<ThemeName, { label: string; primary: string; accent: stri
 };
 
 const placeholderTexts = ["describe", "add", "summarize", "placeholder"];
+
+const isImportedBlock = (block: PosterBlock) =>
+  Boolean(block.imported) ||
+  block.id.startsWith("import-") ||
+  block.id.startsWith("chart-") ||
+  block.id.startsWith("icon-") ||
+  block.type.toLowerCase().includes("imported from");
+
+const importTypeMap: Record<string, string[]> = {
+  problem: ["problem", "hmw", "rootCause", "problemTree"],
+  evidence: ["evidence", "statistic", "source"],
+  stakeholders: ["stakeholder", "systemNode"],
+  journey: ["persona", "journey"],
+  solution: ["idea", "theoryOfChange"],
+  indicators: ["indicator", "chart"],
+  timeline: ["timeline"],
+  images: ["image", "aiVisual"],
+  charts: ["chart", "indicator"],
+  icons: ["icon", "aiVisual"],
+  personas: ["persona"],
+};
+
+const clampPosterSize = (value: number | undefined, fallback: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, typeof value === "number" && Number.isFinite(value) ? value : fallback));
+
+const getProjectObjectImportKey = (object: ProjectObject) => {
+  const baseId = object.id.replace(/-(image|chart|icon)$/, "");
+  const hasEmbeddedImage = object.embeddedVisuals?.some(
+    (visual) => visual.imageDataUrl || visual.visualType === "image"
+  );
+  const hasEmbeddedChart = object.embeddedVisuals?.some(
+    (visual) => visual.chartData?.length || visual.visualType === "chart"
+  );
+  const visualKind =
+    object.imageDataUrl || object.visualType === "image" || object.type === "image" || hasEmbeddedImage
+      ? "image"
+      : object.chartData?.length || object.visualType === "chart" || object.type === "chart" || hasEmbeddedChart
+      ? "chart"
+      : object.icon || object.visualType === "icon" || object.type === "icon"
+      ? "icon"
+      : object.type;
+
+  return `${object.studioId}:${baseId}:${visualKind}`;
+};
+
+const getElementSelectionKey = (object: ProjectObject) =>
+  `${object.studioId}:${object.id}`;
 
 export default function PosterStudioPage() {
   const { project, importObjects, appendAlert, updateStudioState } = useProject();
@@ -150,6 +204,7 @@ export default function PosterStudioPage() {
   const [selectedImports, setSelectedImports] = useState<Record<string, boolean>>(
     Object.fromEntries(importOptions.map(([key]) => [key, true]))
   );
+  const [selectedElementImports, setSelectedElementImports] = useState<Record<string, boolean>>({});
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -236,10 +291,14 @@ export default function PosterStudioPage() {
     };
 
     if (projectScopedStorageKey) {
-      localStorage.setItem(
+      const savedLocally = trySetLocalStorageItem(
         projectScopedStorageKey,
         JSON.stringify(posterState)
       );
+
+      if (!savedLocally && !silent) {
+        setReviewText("Poster is too large for browser storage, so it was saved to the project database instead.");
+      }
     }
     updateStudioState("poster", posterState);
     setLastSavedAt(savedAt);
@@ -281,16 +340,6 @@ export default function PosterStudioPage() {
     [blocks]
   );
 
-  const getBlockStatus = (block?: PosterBlock) => {
-    if (!block) return "+";
-    const text = block.content.trim().toLowerCase();
-    if (!text) return "○";
-    if (placeholderTexts.some((item) => text.startsWith(item)) || text.includes("placeholder")) {
-      return "⚠";
-    }
-    return "✓";
-  };
-
   const updateHeader = (changes: Partial<PosterHeader>) => {
     setPosterHeader((prev) => ({ ...prev, ...changes }));
     setSavedStatus("Unsaved changes");
@@ -319,7 +368,9 @@ export default function PosterStudioPage() {
 
   const addVisualElement = (kind: PosterBlockKind) => {
     const id = `${kind}-${Date.now()}`;
-    const visualCount = blocks.filter((block) => block.kind !== "section").length;
+    const topElementCount = blocks.filter((block) =>
+      ["textbox", "callout", "divider"].includes(block.kind)
+    ).length;
     const block: PosterBlock = {
       id,
       number: "+",
@@ -342,10 +393,10 @@ export default function PosterStudioPage() {
           ? "Imported from previous studio"
           : "Visual Element",
       accent: currentTheme.accent,
-      x: kind === "divider" ? 0 : 80 + (visualCount % 2) * 440,
-      y: 1380 + Math.floor(visualCount / 2) * 210,
+      x: kind === "divider" ? 60 : 80 + (topElementCount % 2) * 460,
+      y: 260 + Math.floor(topElementCount / 2) * 220,
       width: kind === "divider" ? 1200 : 420,
-      height: kind === "divider" ? 60 : 180,
+      height: kind === "divider" ? 60 : kind === "callout" ? 200 : 180,
       kind,
       content:
         kind === "textbox"
@@ -483,35 +534,275 @@ export default function PosterStudioPage() {
     return buildPosterContent(importedObjects);
   };
 
-  const importSelectedFromStudios = () => {
-    const posterContent = readPosterContent();
-    const smartContent: Record<string, string | undefined> = {
-      problem: posterContent.problem,
-      evidence: posterContent.evidence,
-      stakeholders: posterContent.stakeholders,
-      journey: posterContent.population,
-      solution: posterContent.solution,
-      implementation: posterContent.implementation,
-      risks: posterContent.risks,
-      indicators: posterContent.indicators,
-      timeline: posterContent.implementation,
-      funding: posterContent.implementation,
-      partners: posterContent.stakeholders,
-    };
-    setBlocks((prev) =>
-      prev.map((block) => {
-        if (!selectedImports[block.id]) return block;
-        return { ...block, content: smartContent[block.id] || block.content };
-      })
+  const readPosterContentForSource = (
+    source: "Problem/Evidence" | "Process" | "Solution" | "Implementation"
+  ) => {
+    const importedObjects = readAllStudioObjectsFromProject(project);
+    importObjects(importedObjects);
+
+    const studioId =
+      source === "Problem/Evidence"
+        ? "problem"
+        : source === "Process"
+        ? "process"
+        : source === "Solution"
+        ? "solution"
+        : "implementation";
+
+    return buildPosterContent(
+      importedObjects.filter((object) => object.studioId === studioId)
     );
-    if (selectedImports.charts) importChartFromStudios("Problem/Evidence");
-    if (selectedImports.icons) importIconFromStudios("Problem/Evidence");
-    setReviewText("Selected content imported from previous studios.");
+  };
+
+  const buildImportedBlock = (
+    key: string,
+    label: string,
+    content: string,
+    index: number
+  ): PosterBlock => {
+    const kind: PosterBlockKind =
+      key === "charts" || key === "indicators"
+        ? "chart"
+        : key === "icons"
+        ? "icon"
+        : "textbox";
+    const accent = kind === "chart" ? "#2b5876" : kind === "icon" ? "#4e4376" : currentTheme.accent;
+
+    return {
+      id: `import-${key}-${Date.now()}-${index}`,
+      number: "+",
+      title: label,
+      type: "Imported from previous studios",
+      accent,
+      x: 80 + (index % 2) * 500,
+      y: 260 + Math.floor(index / 2) * 250,
+      width: kind === "icon" ? 340 : 440,
+      height: kind === "chart" ? 220 : 190,
+      kind,
+      content,
+      imported: true,
+    };
+  };
+
+  const projectObjectMatchesImport = (object: ProjectObject, key: string) => {
+    const hasEmbeddedImage = object.embeddedVisuals?.some(
+      (visual) => visual.imageDataUrl || visual.visualType === "image"
+    );
+    const hasEmbeddedChart = object.embeddedVisuals?.some(
+      (visual) => visual.chartData?.length || visual.visualType === "chart"
+    );
+
+    if (key === "images") {
+      return Boolean(object.imageDataUrl) || object.visualType === "image" || object.type === "image" || Boolean(hasEmbeddedImage);
+    }
+
+    if (key === "charts") {
+      return Boolean(object.chartData?.length) || object.visualType === "chart" || object.type === "chart" || Boolean(hasEmbeddedChart);
+    }
+
+    if (key === "icons") {
+      return Boolean(object.icon) || object.visualType === "icon" || object.type === "icon";
+    }
+
+    return importTypeMap[key]?.includes(object.type) ?? false;
+  };
+
+  const buildImportedBlockFromObject = (
+    object: ProjectObject,
+    index: number
+  ): PosterBlock => {
+    const hasEmbeddedVisuals = Boolean(object.embeddedVisuals?.length);
+    const kind: PosterBlockKind =
+      hasEmbeddedVisuals
+        ? "textbox"
+        : object.imageDataUrl || object.visualType === "image" || object.type === "image"
+        ? "image"
+        : object.chartData?.length || object.visualType === "chart" || object.type === "chart"
+        ? "chart"
+        : object.icon || object.visualType === "icon" || object.type === "icon"
+        ? "icon"
+        : "textbox";
+    const accent = kind === "chart" ? "#2b5876" : kind === "icon" ? "#4e4376" : currentTheme.accent;
+
+    return {
+      id: `import-${object.studioId}-${object.id}-${Date.now()}-${index}`,
+      number: "+",
+      title: object.title,
+      type: `Imported from ${object.studioId} studio`,
+      accent,
+      x: 80 + (index % 2) * 500,
+      y: 260 + Math.floor(index / 2) * 250,
+      width: clampPosterSize(object.width, kind === "icon" ? 340 : kind === "image" ? 420 : 440, 260, 620),
+      height: clampPosterSize(object.height, kind === "chart" ? 240 : kind === "image" ? 260 : 190, 150, 420),
+      kind,
+      content: object.content || object.title,
+      imageUrl: object.imageDataUrl,
+      caption: kind === "image" ? object.content : undefined,
+      altText: kind === "image" ? object.title : undefined,
+      imported: true,
+      sourceColor: object.color,
+      icon: object.icon,
+      chartType: object.chartType,
+      chartData: object.chartData,
+      embeddedVisuals: object.embeddedVisuals,
+    };
+  };
+
+  const importSelectedFromStudios = () => {
+    const importedObjects = readAllStudioObjectsFromProject(project);
+    importObjects(importedObjects);
+    const posterContent = buildPosterContent(importedObjects);
+    const smartContent: Record<string, string | undefined> = {
+      ...posterContent,
+      journey: posterContent.population,
+      timeline: posterContent.implementation,
+      charts: posterContent.indicators || posterContent.evidence,
+      personas: posterContent.personas || posterContent.population,
+    };
+
+    const selectedKeys = importOptions
+      .filter(([key]) => selectedImports[key])
+      .map(([key]) => key);
+    const seenObjects = new Set<string>();
+    const richImportedBlocks = importedObjects
+      .filter((object) => {
+        const matched = selectedKeys.some((key) => projectObjectMatchesImport(object, key));
+        const objectKey = getProjectObjectImportKey(object);
+        if (!matched || seenObjects.has(objectKey)) return false;
+        seenObjects.add(objectKey);
+        return true;
+      })
+      .map((object, index) => buildImportedBlockFromObject(object, index));
+    const fallbackBlocks = importOptions
+      .filter(([key]) => selectedImports[key])
+      .filter(([key]) => !richImportedBlocks.some((block) => projectObjectMatchesImport({
+        id: block.id,
+        title: block.title,
+        type: block.kind,
+        content: block.content,
+        studioId: "poster",
+        imageDataUrl: block.imageUrl,
+        visualType: block.kind === "image" || block.kind === "chart" || block.kind === "icon" ? block.kind : undefined,
+        icon: block.icon,
+        chartData: block.chartData,
+      }, key)))
+      .map(([key, label], index) =>
+        buildImportedBlock(
+          key,
+          label,
+          smartContent[key] ||
+            `No saved ${label.toLowerCase()} content was found in the previous studios.`,
+          richImportedBlocks.length + index
+        )
+      );
+    const importedBlocks = richImportedBlocks.length ? richImportedBlocks : fallbackBlocks;
+
+    setBlocks((prev) => [...prev, ...importedBlocks]);
+    const firstImportedBlock = importedBlocks[0];
+
+    if (firstImportedBlock) {
+      setSelectedBlockId(firstImportedBlock.id);
+      setSelectedHeaderField(null);
+      setActiveSideTab(
+        firstImportedBlock.kind === "chart" || firstImportedBlock.kind === "icon"
+          ? "Visuals"
+          : "Text"
+      );
+      setTimeout(() => scrollToBlock(firstImportedBlock), 50);
+    }
+
+    setReviewText(
+      importedBlocks.length
+        ? `${importedBlocks.length} item${importedBlocks.length === 1 ? "" : "s"} imported from previous studios.`
+        : "Choose at least one import option."
+    );
+    setSavedStatus("Unsaved changes");
+  };
+
+  const importCheckedStudioElements = () => {
+    const studioObjects = readAllStudioObjectsFromProject(project);
+    const seenObjects = new Set<string>();
+    const selectedObjects = studioObjects.filter((object) => {
+      const selected = Boolean(selectedElementImports[getElementSelectionKey(object)]);
+      const objectKey = getProjectObjectImportKey(object);
+
+      if (!selected || seenObjects.has(objectKey)) return false;
+      seenObjects.add(objectKey);
+      return true;
+    });
+    const importedBlocks = selectedObjects.map((object, index) =>
+      buildImportedBlockFromObject(object, index)
+    );
+    const firstImportedBlock = importedBlocks[0];
+
+    if (!importedBlocks.length) {
+      setReviewText("Select at least one saved element to import.");
+      return;
+    }
+
+    importObjects(selectedObjects);
+    setBlocks((prev) => [...prev, ...importedBlocks]);
+
+    if (firstImportedBlock) {
+      setSelectedBlockId(firstImportedBlock.id);
+      setSelectedHeaderField(null);
+      setActiveSideTab(
+        firstImportedBlock.kind === "chart" || firstImportedBlock.kind === "icon" || firstImportedBlock.kind === "image"
+          ? "Visuals"
+          : "Text"
+      );
+      setTimeout(() => scrollToBlock(firstImportedBlock), 50);
+    }
+
+    setSelectedElementImports({});
+    setReviewText(
+      `${importedBlocks.length} selected element${importedBlocks.length === 1 ? "" : "s"} imported from previous studios.`
+    );
     setSavedStatus("Unsaved changes");
   };
 
   const importChartFromStudios = (source: "Problem/Evidence" | "Process" | "Solution" | "Implementation") => {
-    const posterContent = readPosterContent();
+    const seenObjects = new Set<string>();
+    const sourceObjects = readAllStudioObjectsFromProject(project).filter((object) => {
+      const studioId =
+        source === "Problem/Evidence"
+          ? "problem"
+          : source === "Process"
+          ? "process"
+          : source === "Solution"
+          ? "solution"
+          : "implementation";
+
+      const objectKey = getProjectObjectImportKey(object);
+      if (object.studioId !== studioId || !projectObjectMatchesImport(object, "charts") || seenObjects.has(objectKey)) {
+        return false;
+      }
+      seenObjects.add(objectKey);
+      return true;
+    });
+
+    importObjects(sourceObjects);
+
+    const importedVisualCount = blocks.filter(
+      (block) => block.kind === "chart" || block.kind === "icon" || block.kind === "image"
+    ).length;
+
+    if (sourceObjects.length) {
+      const chartBlocks = sourceObjects.map((object, index) =>
+        buildImportedBlockFromObject(object, importedVisualCount + index)
+      );
+      const firstChartBlock = chartBlocks[0];
+
+      setBlocks((prev) => [...prev, ...chartBlocks]);
+      setSelectedBlockId(firstChartBlock.id);
+      setSelectedHeaderField(null);
+      setSavedStatus("Unsaved changes");
+      setReviewText(`${chartBlocks.length} chart${chartBlocks.length === 1 ? "" : "s"} imported from ${source}.`);
+      setTimeout(() => scrollToBlock(firstChartBlock), 50);
+      return;
+    }
+
+    const posterContent = readPosterContentForSource(source);
 
     const contentMap: Record<typeof source, string | undefined> = {
       "Problem/Evidence": posterContent.evidence || posterContent.problem,
@@ -530,12 +821,13 @@ export default function PosterStudioPage() {
       title: `${source} Chart`,
       type: `Imported from ${source} Studio`,
       accent: "#2b5876",
-      x: 460,
-      y: 1380 + blocks.filter((block) => block.kind === "chart").length * 240,
+      x: 80 + (importedVisualCount % 2) * 500,
+      y: 260 + Math.floor(importedVisualCount / 2) * 250,
       width: 440,
       height: 220,
       kind: "chart",
       content,
+      imported: true,
     };
 
     setBlocks((prev) => [...prev, chartBlock]);
@@ -543,10 +835,51 @@ export default function PosterStudioPage() {
     setSelectedHeaderField(null);
     setSavedStatus("Unsaved changes");
     setReviewText(`Chart imported from ${source} studio content.`);
+    setTimeout(() => scrollToBlock(chartBlock), 50);
   };
 
   const importIconFromStudios = (source: "Problem/Evidence" | "Process" | "Solution" | "Implementation") => {
-    const posterContent = readPosterContent();
+    const seenObjects = new Set<string>();
+    const sourceObjects = readAllStudioObjectsFromProject(project).filter((object) => {
+      const studioId =
+        source === "Problem/Evidence"
+          ? "problem"
+          : source === "Process"
+          ? "process"
+          : source === "Solution"
+          ? "solution"
+          : "implementation";
+
+      const objectKey = getProjectObjectImportKey(object);
+      if (object.studioId !== studioId || !projectObjectMatchesImport(object, "icons") || seenObjects.has(objectKey)) {
+        return false;
+      }
+      seenObjects.add(objectKey);
+      return true;
+    });
+
+    importObjects(sourceObjects);
+
+    const importedVisualCount = blocks.filter(
+      (block) => block.kind === "chart" || block.kind === "icon" || block.kind === "image"
+    ).length;
+
+    if (sourceObjects.length) {
+      const iconBlocks = sourceObjects.map((object, index) =>
+        buildImportedBlockFromObject(object, importedVisualCount + index)
+      );
+      const firstIconBlock = iconBlocks[0];
+
+      setBlocks((prev) => [...prev, ...iconBlocks]);
+      setSelectedBlockId(firstIconBlock.id);
+      setSelectedHeaderField(null);
+      setSavedStatus("Unsaved changes");
+      setReviewText(`${iconBlocks.length} icon${iconBlocks.length === 1 ? "" : "s"} imported from ${source}.`);
+      setTimeout(() => scrollToBlock(firstIconBlock), 50);
+      return;
+    }
+
+    const posterContent = readPosterContentForSource(source);
 
     const contentMap: Record<typeof source, string | undefined> = {
       "Problem/Evidence": posterContent.problem || posterContent.evidence,
@@ -565,12 +898,13 @@ export default function PosterStudioPage() {
       title: `${source} Icon`,
       type: `Imported from ${source} Studio`,
       accent: "#4e4376",
-      x: 920,
-      y: 1380 + blocks.filter((block) => block.kind === "icon").length * 200,
+      x: 80 + (importedVisualCount % 2) * 500,
+      y: 260 + Math.floor(importedVisualCount / 2) * 250,
       width: 340,
       height: 180,
       kind: "icon",
       content,
+      imported: true,
     };
 
     setBlocks((prev) => [...prev, iconBlock]);
@@ -578,6 +912,7 @@ export default function PosterStudioPage() {
     setSelectedHeaderField(null);
     setSavedStatus("Unsaved changes");
     setReviewText(`Icon imported from ${source} studio content.`);
+    setTimeout(() => scrollToBlock(iconBlock), 50);
   };
 
   const applyPosterLayout = (layout: LayoutName) => {
@@ -708,27 +1043,62 @@ export default function PosterStudioPage() {
     }
 
     if (activeSideTab === "Elements") {
+      const studioObjects = readAllStudioObjectsFromProject(project);
+      const selectedElementCount = studioObjects.filter((object) =>
+        Boolean(selectedElementImports[getElementSelectionKey(object)])
+      ).length;
+
       return (
         <>
-          <h2>Document Outline</h2>
-          <p className="fieldNote">Jump to any section and edit it on the poster.</p>
-          <div className={styles.toolList}>
-            {posterSections.map(([id, title, note]) => {
-              const target = id === "header" ? undefined : blocks.find((block) => block.id === id);
-              const active = (id === "header" && selectedHeaderField) || target?.id === selectedBlockId;
+          <h2>Elements</h2>
+          <p className="fieldNote">Select saved elements from previous studios and import them into the poster workspace.</p>
+          <div className={styles.elementImportList}>
+            {sourceStudios.map(([studioId, studioName]) => {
+              const objects = studioObjects.filter((object) => object.studioId === studioId);
+
               return (
-                <button
-                  key={id}
-                  type="button"
-                  className={`${styles.toolCardButton} ${active ? styles.toolCardActive : ""}`}
-                  onClick={() => (id === "header" ? scrollToHeader("title") : target && scrollToBlock(target))}
-                >
-                  <strong>{id === "header" ? "✓" : getBlockStatus(target)} {title}</strong>
-                  <span>{note}</span>
-                </button>
+                <section key={studioId} className={styles.elementStudioGroup}>
+                  <h3>{studioName}</h3>
+                  {objects.length ? (
+                    <div className={styles.elementCheckboxList}>
+                      {objects.map((object) => {
+                        const key = getElementSelectionKey(object);
+                        const hasVisual =
+                          Boolean(object.imageDataUrl) ||
+                          Boolean(object.chartData?.length) ||
+                          Boolean(object.icon) ||
+                          Boolean(object.embeddedVisuals?.length);
+
+                        return (
+                          <label key={key} className={styles.elementCheckboxRow}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedElementImports[key])}
+                              onChange={(event) =>
+                                setSelectedElementImports((prev) => ({
+                                  ...prev,
+                                  [key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            <span>
+                              <strong>{object.title}</strong>
+                              <small>{object.type}{hasVisual ? " · includes visual" : ""}</small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className={styles.emptyElementMessage}>No saved elements yet.</p>
+                  )}
+                </section>
               );
             })}
           </div>
+          <button type="button" className={`button ${styles.elementImportButton}`} onClick={importCheckedStudioElements}>
+            Import Selected Elements{selectedElementCount ? ` (${selectedElementCount})` : ""}
+          </button>
         </>
       );
     }
@@ -874,20 +1244,28 @@ export default function PosterStudioPage() {
   }
 
   function renderImageEditor() {
-    if (!selectedBlock || selectedBlock.kind !== "image") return null;
+    if (!selectedBlock || !["image", "chart", "icon"].includes(selectedBlock.kind)) return null;
     return (
       <div className={styles.editorBox}>
-        <h3>Image Tools</h3>
-        <label className="button secondaryButton">
-          {selectedBlock.imageUrl ? "Replace Image" : "Upload Image"}
-          <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event, selectedBlock.id)} />
-        </label>
-        {selectedBlock.imageUrl ? <button type="button" className="button secondaryButton" onClick={() => updateBlock(selectedBlock.id, { imageUrl: undefined, content: "Image placeholder. Upload, paste, or drag an image here." })}>Remove Image</button> : null}
-        <label className="fieldLabel"><span>Caption</span><textarea rows={3} value={selectedBlock.caption || ""} onChange={(event) => updateBlock(selectedBlock.id, { caption: event.target.value })} /></label>
-        <label className="fieldLabel"><span>Alt Text</span><textarea rows={3} value={selectedBlock.altText || ""} onChange={(event) => updateBlock(selectedBlock.id, { altText: event.target.value })} /></label>
-        <label className="fieldLabel"><span>Style</span><select value={selectedBlock.borderStyle || "none"} onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value as PosterBlock["borderStyle"] })}><option value="none">None</option><option value="rounded">Rounded</option><option value="shadow">Shadow</option><option value="frame">Frame</option></select></label>
-        <button type="button" className="button secondaryButton" onClick={duplicateSelectedBlock}>Duplicate Image</button>
-        <button type="button" className="button secondaryButton" onClick={deleteSelectedBlock}>Delete Image</button>
+        <h3>{selectedBlock.kind === "image" ? "Image Tools" : "Visual Tools"}</h3>
+        {selectedBlock.kind === "image" ? (
+          <>
+            <label className="button secondaryButton">
+              {selectedBlock.imageUrl ? "Replace Image" : "Upload Image"}
+              <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event, selectedBlock.id)} />
+            </label>
+            {selectedBlock.imageUrl ? <button type="button" className="button secondaryButton" onClick={() => updateBlock(selectedBlock.id, { imageUrl: undefined, content: "Image placeholder. Upload, paste, or drag an image here." })}>Remove Image</button> : null}
+            <label className="fieldLabel"><span>Caption</span><textarea rows={3} value={selectedBlock.caption || ""} onChange={(event) => updateBlock(selectedBlock.id, { caption: event.target.value })} /></label>
+            <label className="fieldLabel"><span>Alt Text</span><textarea rows={3} value={selectedBlock.altText || ""} onChange={(event) => updateBlock(selectedBlock.id, { altText: event.target.value })} /></label>
+            <label className="fieldLabel"><span>Style</span><select value={selectedBlock.borderStyle || "none"} onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value as PosterBlock["borderStyle"] })}><option value="none">None</option><option value="rounded">Rounded</option><option value="shadow">Shadow</option><option value="frame">Frame</option></select></label>
+          </>
+        ) : null}
+        <label className="fieldLabel"><span>Title</span><input value={selectedBlock.title} onChange={(event) => updateBlock(selectedBlock.id, { title: event.target.value })} /></label>
+        <label className="fieldLabel"><span>Description</span><textarea rows={4} value={selectedBlock.content} onChange={(event) => updateBlock(selectedBlock.id, { content: event.target.value })} /></label>
+        <div className={styles.twoButtonRow}>
+          <button type="button" className="button secondaryButton" onClick={duplicateSelectedBlock}>Duplicate</button>
+          <button type="button" className="button secondaryButton" onClick={deleteSelectedBlock}>Delete</button>
+        </div>
       </div>
     );
   }
@@ -934,7 +1312,199 @@ export default function PosterStudioPage() {
     window.addEventListener("pointerup", onUp);
   };
 
+  const startBlockResize = (
+    event: React.PointerEvent<HTMLElement>,
+    block: PosterBlock,
+    direction: "right" | "bottom" | "corner"
+  ) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (block.kind === "divider") return;
+
+    setSelectedHeaderField(null);
+    setSelectedBlockId(block.id);
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originalWidth = block.width;
+    const originalHeight = block.height;
+    const minWidth = block.kind === "icon" ? 180 : 220;
+    const minHeight = block.kind === "icon" ? 130 : 150;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const dx = (moveEvent.clientX - startX) / zoom;
+      const dy = (moveEvent.clientY - startY) / zoom;
+
+      updateBlock(block.id, {
+        width:
+          direction === "bottom"
+            ? originalWidth
+            : Math.max(minWidth, Math.round((originalWidth + dx) / 10) * 10),
+        height:
+          direction === "right"
+            ? originalHeight
+            : Math.max(minHeight, Math.round((originalHeight + dy) / 10) * 10),
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setSavedStatus("Unsaved changes");
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const renderPosterChart = (block: PosterBlock, imported: boolean) => {
+    const data = block.chartData ?? [];
+    const maxValue = Math.max(...data.map((row) => row.value), 1);
+
+    if (!data.length) {
+      return (
+        <>
+          <strong>{imported ? "Imported Chart" : "Chart"}</strong>
+          <span>{block.content}</span>
+        </>
+      );
+    }
+
+    if (block.chartType === "line" || block.chartType === "scatter") {
+      const points = data
+        .map((row, index) => {
+          const x = 36 + (index / Math.max(data.length - 1, 1)) * 348;
+          const y = 150 - (row.value / maxValue) * 118;
+          return `${x},${y}`;
+        })
+        .join(" ");
+
+      return (
+        <>
+          <strong>{block.title}</strong>
+          <svg className={styles.posterChartSvg} viewBox="0 0 420 180" role="img" aria-label={block.title}>
+            <line x1="30" y1="155" x2="390" y2="155" stroke="#cbd5e1" strokeWidth="2" />
+            <line x1="32" y1="28" x2="32" y2="155" stroke="#cbd5e1" strokeWidth="2" />
+            <polyline points={points} fill="none" stroke="#0f2f66" strokeWidth="4" />
+            {data.map((row, index) => {
+              const x = 36 + (index / Math.max(data.length - 1, 1)) * 348;
+              const y = 150 - (row.value / maxValue) * 118;
+
+              return (
+                <g key={`${row.label}-${index}`}>
+                  <circle cx={x} cy={y} r="5" fill="#0f2f66" />
+                  <text x={x} y="172" fontSize="10" textAnchor="middle" fill="#334155">
+                    {row.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <strong>{block.title}</strong>
+        <div className={styles.posterChartBars}>
+          {data.map((row) => (
+            <div key={row.label} className={styles.posterChartRow}>
+              <div className={styles.posterChartLabel}>
+                <span>{row.label}</span>
+                <strong>{row.value.toLocaleString()}</strong>
+              </div>
+              <div className={styles.posterChartTrack}>
+                <i style={{ width: `${(row.value / maxValue) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const renderEmbeddedChart = (
+    visual: NonNullable<PosterBlock["embeddedVisuals"]>[number],
+    title: string
+  ) => {
+    const data = visual.chartData ?? [];
+    const maxValue = Math.max(...data.map((row) => row.value), 1);
+
+    if (!data.length) return null;
+
+    if (visual.chartType === "line" || visual.chartType === "scatter") {
+      const points = data
+        .map((row, index) => {
+          const x = 36 + (index / Math.max(data.length - 1, 1)) * 348;
+          const y = 150 - (row.value / maxValue) * 118;
+          return `${x},${y}`;
+        })
+        .join(" ");
+
+      return (
+        <svg className={styles.posterChartSvg} viewBox="0 0 420 180" role="img" aria-label={title}>
+          <line x1="30" y1="155" x2="390" y2="155" stroke="#cbd5e1" strokeWidth="2" />
+          <line x1="32" y1="28" x2="32" y2="155" stroke="#cbd5e1" strokeWidth="2" />
+          <polyline points={points} fill="none" stroke="#0f2f66" strokeWidth="4" />
+          {data.map((row, index) => {
+            const x = 36 + (index / Math.max(data.length - 1, 1)) * 348;
+            const y = 150 - (row.value / maxValue) * 118;
+
+            return (
+              <g key={`${row.label}-${index}`}>
+                <circle cx={x} cy={y} r="5" fill="#0f2f66" />
+                <text x={x} y="172" fontSize="10" textAnchor="middle" fill="#334155">
+                  {row.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      );
+    }
+
+    return (
+      <div className={styles.posterChartBars}>
+        {data.map((row) => (
+          <div key={row.label} className={styles.posterChartRow}>
+            <div className={styles.posterChartLabel}>
+              <span>{row.label}</span>
+              <strong>{row.value.toLocaleString()}</strong>
+            </div>
+            <div className={styles.posterChartTrack}>
+              <i style={{ width: `${(row.value / maxValue) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderEmbeddedVisualCard = (block: PosterBlock) => {
+    const visuals = block.embeddedVisuals ?? [];
+
+    if (!visuals.length) return null;
+
+    return (
+      <div className={styles.embeddedVisualList}>
+        {visuals.map((visual) => (
+          <div key={visual.id} className={styles.embeddedVisualPreview}>
+            {visual.imageDataUrl ? (
+              <img src={visual.imageDataUrl} alt={block.altText || block.title} />
+            ) : (
+              renderEmbeddedChart(visual, block.title)
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderBlockContent = (block: PosterBlock) => {
+    const imported = isImportedBlock(block);
+
     if (block.kind === "image") {
       if (block.imageUrl) {
         return <div className={styles.imageFrame}><img src={block.imageUrl} alt={block.altText || block.title} className={`${styles.posterImage} ${block.borderStyle ? styles[`image_${block.borderStyle}`] : ""}`} />{block.caption ? <small>{block.caption}</small> : null}</div>;
@@ -948,13 +1518,52 @@ export default function PosterStudioPage() {
       );
     }
     if (block.kind === "chart") {
-      return <div className={styles.chartPreview}><strong>Imported Chart</strong><span>{block.content}</span><div className={styles.miniBars}><i /><i /><i /><i /></div></div>;
+      return <div className={styles.chartPreview}>{renderPosterChart(block, imported)}</div>;
     }
     if (block.kind === "icon") {
-      return <div className={styles.iconPreview}><div>◆</div><span>{block.content}</span></div>;
+      return <div className={styles.iconPreview}><div>{block.icon || "◆"}</div><span>{block.content}</span></div>;
     }
     if (block.kind === "divider") return <div className={styles.dividerLine} style={{ background: block.accent }} />;
-    return <p>{block.content}</p>;
+    if (block.embeddedVisuals?.length) {
+      return (
+        <div className={styles.importedCompositeContent}>
+          {block.content ? <p className={styles.importedTextContent}>{block.content}</p> : null}
+          {renderEmbeddedVisualCard(block)}
+        </div>
+      );
+    }
+    return <p className={imported ? styles.importedTextContent : undefined}>{block.content}</p>;
+  };
+
+  const getBlockBackground = (block: PosterBlock) => {
+    const imported = isImportedBlock(block);
+
+    if (block.sourceColor) return block.sourceColor;
+    if (imported && block.kind === "textbox") return "#fff3d6";
+    if (block.kind === "textbox") return "#fffaf0";
+    if (block.kind === "chart") return "#eef8f4";
+    if (block.kind === "icon") return "#f2edff";
+    if (block.kind === "callout") return "#fff1d6";
+    if (block.kind === "divider") return "#f8fafc";
+    return "#ffffff";
+  };
+
+  const getBlockBorder = (block: PosterBlock) => {
+    const imported = isImportedBlock(block);
+
+    if (selectedBlockId === block.id && !selectedHeaderField) {
+      return `3px solid ${block.accent}`;
+    }
+
+    if (imported || block.kind === "chart" || block.kind === "icon") {
+      return `2px solid ${block.accent}`;
+    }
+
+    if (block.kind === "callout") {
+      return `2px solid ${block.accent}`;
+    }
+
+    return "1px solid #d8e0ee";
   };
 
   const posterWidth = orientation === "landscape" ? 1400 : 980;
@@ -1022,12 +1631,26 @@ export default function PosterStudioPage() {
                 </section>
 
                 <section className={styles.posterBody}>
-                  {blocks.map((block) => (
-                    <article key={block.id} className={styles.posterBlock} title="Drag to reposition" onPointerDown={(event) => startBlockDrag(event, block)} onClick={() => { setSelectedHeaderField(null); setSelectedBlockId(block.id); if (block.kind === "image") setActiveSideTab("Visuals"); else if (block.kind === "chart" || block.kind === "icon") setActiveSideTab("Visuals"); else setActiveSideTab("Text"); }} style={{ border: selectedBlockId === block.id && !selectedHeaderField ? `3px solid ${block.accent}` : "1px solid #d8e0ee", borderRadius: block.kind === "divider" ? 4 : 8, padding: block.kind === "divider" ? 10 : 14, left: block.x, top: block.y, width: block.width, height: block.height, background: block.kind === "callout" ? "#fff7ed" : block.kind === "divider" ? "#f8fafc" : "#ffffff" }}>
-                      <div className={styles.blockTitleRow}><span style={{ background: block.accent }}>{block.number}</span><strong>{block.title.toUpperCase()}</strong></div>
-                      {renderBlockContent(block)}
-                    </article>
-                  ))}
+                  {blocks.map((block) => {
+                    const imported = isImportedBlock(block);
+
+                    return (
+                      <article key={block.id} className={`${styles.posterBlock} ${imported ? styles.importedBlock : ""} ${block.kind === "callout" ? styles.calloutBlock : ""}`} title="Drag to reposition" onPointerDown={(event) => startBlockDrag(event, block)} onClick={() => { setSelectedHeaderField(null); setSelectedBlockId(block.id); if (block.kind === "image") setActiveSideTab("Visuals"); else if (block.kind === "chart" || block.kind === "icon") setActiveSideTab("Visuals"); else setActiveSideTab("Text"); }} style={{ border: getBlockBorder(block), borderRadius: block.kind === "divider" ? 4 : 8, padding: block.kind === "divider" ? 10 : 14, left: block.x, top: block.y, width: block.width, height: block.height, background: getBlockBackground(block), color: "#111827", boxShadow: imported || block.kind === "chart" || block.kind === "icon" || block.kind === "callout" ? "0 8px 22px rgba(43, 88, 118, 0.16)" : undefined }}>
+                        <div className={styles.blockTitleRow}>
+                          {!imported ? <span style={{ background: block.accent }}>{block.number}</span> : null}
+                          <strong>{block.title.toUpperCase()}</strong>
+                        </div>
+                        {renderBlockContent(block)}
+                        {selectedBlockId === block.id && !selectedHeaderField && block.kind !== "divider" ? (
+                          <>
+                            <button type="button" aria-label="Resize width" className={`${styles.resizeHandle} ${styles.resizeHandleRight}`} onPointerDown={(event) => startBlockResize(event, block, "right")} />
+                            <button type="button" aria-label="Resize height" className={`${styles.resizeHandle} ${styles.resizeHandleBottom}`} onPointerDown={(event) => startBlockResize(event, block, "bottom")} />
+                            <button type="button" aria-label="Resize card" className={`${styles.resizeHandle} ${styles.resizeHandleCorner}`} onPointerDown={(event) => startBlockResize(event, block, "corner")} />
+                          </>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                 </section>
               </div>
             </div>
