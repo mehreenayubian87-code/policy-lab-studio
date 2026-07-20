@@ -2,6 +2,7 @@
   max-width: none;
   padding: 18px 20px 20px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(5, 15, 28, 0.84) 0%, rgba(13, 48, 48, 0.74) 46%, rgba(17, 24, 39, 0.56) 100%),
     radial-gradient(circle at 10% 10%, rgba(255, 188, 112, 0.22), transparent 28%),
@@ -126,8 +127,8 @@
 .shell {
   position: relative;
   width: min(1360px, 100%);
-  height: calc(100vh - 164px);
-  min-height: 680px;
+  height: clamp(560px, calc(100vh - 164px), 760px);
+  min-height: 0;
   margin: 0 auto;
   border-radius: 18px;
   overflow: hidden;
@@ -214,13 +215,15 @@
     flex-direction: column;
   }
 
-  .headerActions {
-    justify-content: flex-start;
+  .headerRight,
+  .navActions {
+    width: 100%;
+    max-width: none;
   }
 
   .shell {
-    height: calc(100vh - 120px);
-    min-height: 680px;
+    height: clamp(540px, calc(100vh - 150px), 680px);
+    min-height: 0;
   }
 
   .workspace {
@@ -262,5 +265,52 @@
   .reviewPanel {
     top: auto;
     bottom: 44px;
+  }
+}
+
+@media (max-width: 1180px), (max-height: 820px) {
+  .studioPage {
+    padding: 12px;
+  }
+
+  .header {
+    min-height: 0;
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .header h1 {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+  }
+
+  .titleBlock {
+    gap: 8px;
+  }
+
+  .shell {
+    height: clamp(520px, calc(100vh - 138px), 680px);
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 620px) {
+  .studioPage {
+    padding: 10px;
+  }
+
+  .header {
+    padding: 18px 14px;
+  }
+
+  .navActions {
+    justify-content: flex-start;
+  }
+
+  .alertRow {
+    justify-content: flex-start;
+  }
+
+  .shell {
+    height: clamp(520px, calc(100vh - 168px), 640px);
   }
 }

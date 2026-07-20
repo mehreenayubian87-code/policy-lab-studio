@@ -1,6 +1,7 @@
 .posterPage {
   min-height: 100vh;
   padding: 18px 20px 20px;
+  overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(5, 15, 28, 0.84) 0%, rgba(13, 48, 48, 0.74) 46%, rgba(17, 24, 39, 0.56) 100%),
     radial-gradient(circle at 10% 10%, rgba(255, 188, 112, 0.22), transparent 28%),
@@ -121,8 +122,8 @@
   display: grid;
   grid-template-columns: 62px 252px minmax(0, 1fr);
   width: min(1360px, 100%);
-  height: calc(100vh - 164px);
-  min-height: 680px;
+  height: clamp(560px, calc(100vh - 164px), 760px);
+  min-height: 0;
   margin: 0 auto;
   border-radius: 18px;
   overflow: hidden;
@@ -132,6 +133,74 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 28px 70px rgba(3, 7, 18, 0.34);
   backdrop-filter: blur(10px);
+}
+
+@media (max-width: 1180px), (max-height: 820px) {
+  .posterPage {
+    padding: 12px;
+  }
+
+  .topHeader {
+    min-height: 0;
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .topHeader h1 {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+  }
+
+  .studioShell {
+    height: clamp(520px, calc(100vh - 138px), 680px);
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  .topHeader {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .alertRow {
+    justify-content: flex-start;
+  }
+
+  .studioShell {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .leftPanel {
+    display: none;
+  }
+
+  .workspacePanel {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .posterPage {
+    padding: 10px;
+  }
+
+  .topHeader {
+    padding: 18px 14px;
+  }
+
+  .studioShell {
+    height: clamp(520px, calc(100vh - 168px), 640px);
+    grid-template-columns: 1fr;
+  }
+
+  .sideNav {
+    display: none;
+  }
 }
 
 .previewMode {
@@ -629,5 +698,89 @@
   .posterPaper {
     box-shadow: none;
     border: none;
+  }
+}
+
+@media screen and (max-width: 1180px), screen and (max-height: 820px) {
+  .posterPage {
+    padding: 12px;
+  }
+
+  .topHeader {
+    min-height: 0;
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .topHeader h1 {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+  }
+
+  .studioShell {
+    height: clamp(520px, calc(100vh - 138px), 680px);
+    min-height: 0;
+    border-radius: 14px;
+  }
+}
+
+@media screen and (max-width: 900px) {
+  .topHeader {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .alertRow {
+    justify-content: flex-start;
+  }
+
+  .studioShell {
+    grid-template-columns: 54px minmax(220px, 280px) minmax(0, 1fr);
+  }
+
+  .workspacePanel {
+    min-width: 0;
+  }
+
+  .workspaceActions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+}
+
+@media screen and (max-width: 620px) {
+  .posterPage {
+    padding: 10px;
+  }
+
+  .topHeader {
+    padding: 18px 14px;
+  }
+
+  .studioShell {
+    height: clamp(520px, calc(100vh - 168px), 640px);
+    grid-template-columns: 1fr;
+  }
+
+  .sideNav {
+    display: none;
+  }
+
+  .leftPanel {
+    display: none;
+  }
+
+  .zoomControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .zoomButtonGroup,
+  .workspaceActions {
+    width: 100%;
   }
 }

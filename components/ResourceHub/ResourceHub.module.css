@@ -2,7 +2,8 @@
   min-height: 100vh;
   display: grid;
   grid-template-rows: 1fr auto;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     linear-gradient(135deg, rgba(5, 15, 28, 0.84) 0%, rgba(13, 48, 48, 0.74) 46%, rgba(17, 24, 39, 0.56) 100%),
     radial-gradient(circle at 10% 10%, rgba(255, 188, 112, 0.22), transparent 28%),
@@ -14,9 +15,9 @@
   position: relative;
   width: min(1360px, calc(100% - 40px));
   min-height: 520px;
-  margin: 0 auto;
+  margin: clamp(20px, 5vh, 42px) auto;
   padding: clamp(34px, 4.2vw, 58px);
-  align-self: center;
+  align-self: start;
   display: grid;
   gap: 20px;
   border-radius: 18px;

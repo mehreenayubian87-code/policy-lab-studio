@@ -1,6 +1,7 @@
 .presentationPage {
   min-height: 100vh;
   padding: 18px 20px 20px;
+  overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(5, 15, 28, 0.84) 0%, rgba(13, 48, 48, 0.74) 46%, rgba(17, 24, 39, 0.56) 100%),
     radial-gradient(circle at 10% 10%, rgba(255, 188, 112, 0.22), transparent 28%),
@@ -300,5 +301,52 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+}
+
+@media (max-width: 1180px), (max-height: 820px) {
+  .presentationPage {
+    padding: 12px;
+  }
+
+  .hero {
+    min-height: 0;
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .pageTitle {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+  }
+
+  .heroText {
+    min-width: 0;
+  }
+
+  .verticalSections {
+    padding: 18px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 620px) {
+  .presentationPage {
+    padding: 10px;
+  }
+
+  .hero {
+    padding: 18px 14px;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+  }
+
+  .verticalSections {
+    padding: 14px;
+  }
+
+  .sectionHeader {
+    padding: 14px;
   }
 }
