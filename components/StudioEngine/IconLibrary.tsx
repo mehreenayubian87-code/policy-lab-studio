@@ -137,7 +137,7 @@ export default function IconLibrary({
           </div>
 
           <p className="fieldNote" style={{ marginBottom: 0 }}>
-            Click an icon to add it to the canvas.
+            Click an icon to insert it at the last cursor position in a workspace card.
           </p>
         </div>
       ) : null}

@@ -371,6 +371,24 @@ select {
   text-shadow: none;
 }
 
+.panelHint input,
+.panelHint textarea,
+.panelHint select {
+  background: #ffffff;
+  color: #111827 !important;
+  caret-color: #111827;
+}
+
+.panelHint input::placeholder,
+.panelHint textarea::placeholder {
+  color: #64748b;
+}
+
+.panelHint option {
+  color: #111827;
+  background: #ffffff;
+}
+
 .panelNote {
   margin-top: 14px;
   padding: 14px;

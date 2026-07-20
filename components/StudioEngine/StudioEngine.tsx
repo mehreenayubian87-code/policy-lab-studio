@@ -84,6 +84,11 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const [isPanning, setIsPanning] = useState(false);
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const lastContentCursor = useRef<{
+    objectId: string;
+    start: number;
+    end: number;
+  } | null>(null);
   const panState = useRef({
     active: false,
     startX: 0,
@@ -275,6 +280,57 @@ const distributeSelected = (direction: "horizontal" | "vertical") => {
 
     setObjects((prev) => [...prev, object]);
     setSelectedId(object.id);
+    setSelectedIds([object.id]);
+  };
+
+  const handleContentCursorChange = (objectId: string, start: number, end: number) => {
+    lastContentCursor.current = { objectId, start, end };
+  };
+
+  const insertIconAtLastCursor = (icon: string) => {
+    const cursor = lastContentCursor.current;
+    const targetId = cursor?.objectId ?? selectedId;
+    const target = objects.find((object) => object.id === targetId);
+
+    if (!target || target.locked) {
+      setSaved("Click inside a workspace card first.");
+      setTimeout(() => setSaved(""), 1600);
+      return;
+    }
+
+    const start = cursor?.objectId === target.id ? cursor.start : target.content.length;
+    const end = cursor?.objectId === target.id ? cursor.end : target.content.length;
+    const nextContent = `${target.content.slice(0, start)}${icon}${target.content.slice(end)}`;
+    const nextCursor = start + icon.length;
+    const nextObjects = objects.map((object) =>
+      object.id === target.id
+        ? {
+            ...object,
+            content: nextContent,
+            icon,
+          }
+        : object
+    ) as StudioObject[];
+    const studioState = {
+      objects: nextObjects,
+      connections,
+      zoom,
+      checklistState,
+      savedAt: new Date().toISOString(),
+    };
+
+    setObjects(nextObjects);
+    setSelectedId(target.id);
+    setSelectedIds([target.id]);
+    if (projectScopedStorageKey) {
+      localStorage.setItem(projectScopedStorageKey, JSON.stringify(studioState));
+    }
+    updateStudioState(config.studioId, studioState);
+    lastContentCursor.current = {
+      objectId: target.id,
+      start: nextCursor,
+      end: nextCursor,
+    };
   };
 
   const updateObject = (id: string, changes: Partial<StudioObject>) => {
@@ -650,18 +706,6 @@ const deleteConnection = (id: string) => {
     });
   };
 
-  const copyIconToClipboard = async (icon: string) => {
-    if (typeof navigator === "undefined") return;
-
-    try {
-      await navigator.clipboard.writeText(icon);
-      setSaved("Icon copied. Select a card and use Paste to Card.");
-      setTimeout(() => setSaved(""), 1800);
-    } catch {
-      return;
-    }
-  };
-
   const completedChecklist = config.checklist.filter((item) => checklistState[item]).length;
 const selectedObjectConnections = selectedObject
   ? connections.filter(
@@ -852,7 +896,9 @@ const selectedObjectConnections = selectedObject
 
         <div className="panelHint" style={{ padding: 10 }}>
           <strong>Icon Library</strong>
-          <IconLibrary onAddIcon={copyIconToClipboard} />
+          <IconLibrary
+            onAddIcon={insertIconAtLastCursor}
+          />
         </div>
       </div>
     </>
@@ -1049,6 +1095,7 @@ const selectedObjectConnections = selectedObject
               onUpdate={updateObject}
               onDelete={deleteObject}
               onDuplicate={duplicateObject}
+              onContentCursorChange={handleContentCursorChange}
             />
           ))}
         </div>

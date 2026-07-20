@@ -34,12 +34,20 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className={styles.heroImageFrame}>
-            <img
-              src="/images/etok.jpeg"
-              alt="Policy Lab award recipient"
-              className={styles.heroImage}
+          <div className={styles.heroVideoCard}>
+            <video
+              className={styles.heroVideo}
+              src="/images/video landing page.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
             />
+
+            <div className={styles.videoCaption}>
+              <span>Policy Lab in action</span>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import type { ReactNode } from "react";
 import type { StudioObject } from "./types";
 
 type ExtendedStudioObject = StudioObject & {
@@ -8,6 +10,18 @@ type ExtendedStudioObject = StudioObject & {
   visualType?: "image" | "chart" | "icon";
   chartType?: "bar" | "line" | "pie" | "scatter";
   chartData?: Array<{ label: string; value: number }>;
+  visualInsertIndex?: number;
+  embeddedVisuals?: EmbeddedVisual[];
+};
+
+type EmbeddedVisual = {
+  id: string;
+  insertIndex: number;
+  imageDataUrl?: string;
+  visualType: "image" | "chart";
+  chartType?: "bar" | "line" | "pie" | "scatter";
+  chartData?: Array<{ label: string; value: number }>;
+  icon?: string;
 };
 
 const VISUAL_CLIPBOARD_KEY = "plstudio_visual_clipboard";
@@ -22,6 +36,7 @@ export default function StudioObjectCard({
   onDelete,
   onDuplicate,
   snapToGrid,
+  onContentCursorChange,
 }: {
   snapToGrid: (value: number) => number;
   object: StudioObject;
@@ -32,8 +47,134 @@ export default function StudioObjectCard({
   onUpdate: (id: string, changes: Partial<StudioObject>) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onContentCursorChange: (id: string, start: number, end: number) => void;
 }) {
   const visualObject = object as ExtendedStudioObject;
+  const contentCursor = useRef({ start: object.content.length, end: object.content.length });
+  const actionStatusTimer = useRef<number | null>(null);
+  const [actionStatus, setActionStatus] = useState("");
+  const embeddedImageHeight = Math.max(140, Math.min(520, Math.round(object.height * 0.58)));
+  const embeddedChartHeight = Math.max(120, Math.min(360, Math.round(object.height * 0.44)));
+
+  const notifyAction = (message: string) => {
+    setActionStatus(message);
+
+    if (actionStatusTimer.current) {
+      window.clearTimeout(actionStatusTimer.current);
+    }
+
+    actionStatusTimer.current = window.setTimeout(() => {
+      setActionStatus("");
+      actionStatusTimer.current = null;
+    }, 1400);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (actionStatusTimer.current) {
+        window.clearTimeout(actionStatusTimer.current);
+      }
+    };
+  }, []);
+
+  const recordCursor = (element: HTMLTextAreaElement) => {
+    contentCursor.current = {
+      start: element.selectionStart,
+      end: element.selectionEnd,
+    };
+    onContentCursorChange(object.id, element.selectionStart, element.selectionEnd);
+  };
+
+  const insertTextAtCursor = (text: string) => {
+    const start = Math.min(contentCursor.current.start, object.content.length);
+    const end = Math.min(contentCursor.current.end, object.content.length);
+    const nextContent = `${object.content.slice(0, start)}${text}${object.content.slice(end)}`;
+    const nextCursor = start + text.length;
+
+    contentCursor.current = {
+      start: nextCursor,
+      end: nextCursor,
+    };
+    onContentCursorChange(object.id, nextCursor, nextCursor);
+    onUpdate(object.id, { content: nextContent });
+  };
+
+  const buildClipboardText = (payload: Partial<ExtendedStudioObject>) => {
+    if (payload.visualType === "chart" || payload.chartData?.length) {
+      const rows = payload.chartData?.length
+        ? payload.chartData
+            .map((row) => `${row.label}: ${row.value}`)
+            .join("\n")
+        : "";
+      const title = payload.title || "Chart / Graph";
+      const content = payload.content || "";
+
+      return [title, content, rows].filter(Boolean).join("\n");
+    }
+
+    return payload.icon || payload.content || payload.title || "";
+  };
+
+  const isChartPayload = (payload: Partial<ExtendedStudioObject>) =>
+    payload.visualType === "chart" || Boolean(payload.chartData?.length);
+
+  const getEmbeddedVisuals = () => {
+    const visuals = Array.isArray(visualObject.embeddedVisuals)
+      ? [...visualObject.embeddedVisuals]
+      : [];
+
+    const hasLegacyVisual =
+      object.type !== "chart" &&
+      object.type !== "icon" &&
+      visuals.length === 0 &&
+      typeof visualObject.visualInsertIndex === "number" &&
+      Boolean(
+        visualObject.imageDataUrl ||
+          visualObject.visualType === "chart" ||
+          visualObject.chartData?.length
+      );
+
+    if (hasLegacyVisual) {
+      visuals.push({
+        id: "legacy-visual",
+        insertIndex:
+          typeof visualObject.visualInsertIndex === "number"
+            ? visualObject.visualInsertIndex
+            : object.content.length,
+        imageDataUrl: visualObject.imageDataUrl,
+        visualType: visualObject.imageDataUrl ? "image" : "chart",
+        chartType: visualObject.chartType,
+        chartData: visualObject.chartData,
+        icon: object.icon,
+      });
+    }
+
+    return visuals
+      .map((visual) => ({
+        ...visual,
+        insertIndex: Math.min(Math.max(visual.insertIndex, 0), object.content.length),
+      }))
+      .sort((left, right) => left.insertIndex - right.insertIndex);
+  };
+
+  const addEmbeddedVisual = (visual: Omit<EmbeddedVisual, "id">) => {
+    const embeddedVisuals = [
+      ...getEmbeddedVisuals().filter((item) => item.id !== "legacy-visual"),
+      {
+        ...visual,
+        id: crypto.randomUUID(),
+      },
+    ];
+
+    onUpdate(object.id, {
+      embeddedVisuals,
+      imageDataUrl: undefined,
+      visualType: undefined,
+      chartType: undefined,
+      chartData: undefined,
+      visualInsertIndex: undefined,
+    } as Partial<StudioObject>);
+  };
 
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -101,6 +242,7 @@ export default function StudioObjectCard({
           visualType: "image",
           content: object.content || "Uploaded visual.",
         } as Partial<StudioObject>);
+        notifyAction("Image uploaded");
       }
     };
 
@@ -124,8 +266,9 @@ export default function StudioObjectCard({
 
     try {
       await navigator.clipboard.writeText(object.icon || object.content || object.title || "");
+      notifyAction("Copied");
     } catch {
-      return;
+      notifyAction("Copied locally");
     }
   };
 
@@ -137,15 +280,39 @@ export default function StudioObjectCard({
     if (localVisual) {
       try {
         const parsed = JSON.parse(localVisual);
+        const visualInsertIndex = Math.min(
+          contentCursor.current.start,
+          object.content.length
+        );
 
-        onUpdate(object.id, {
-          imageDataUrl: parsed.imageDataUrl,
-          visualType: parsed.visualType,
-          chartType: parsed.chartType,
-          chartData: parsed.chartData,
-          icon: parsed.icon,
-          content: parsed.content || object.content,
-        } as Partial<StudioObject>);
+        if (isChartPayload(parsed)) {
+          addEmbeddedVisual({
+            insertIndex: visualInsertIndex,
+            visualType: "chart",
+            chartType: parsed.chartType || "bar",
+            chartData: parsed.chartData,
+            icon: parsed.icon || object.icon,
+          });
+          notifyAction("Chart pasted");
+          return;
+        }
+
+        if (parsed.imageDataUrl) {
+          addEmbeddedVisual({
+            insertIndex: visualInsertIndex,
+            imageDataUrl: parsed.imageDataUrl,
+            visualType: "image",
+            icon: parsed.icon || object.icon,
+          });
+          notifyAction("Image pasted");
+          return;
+        }
+
+        const text = buildClipboardText(parsed);
+        if (text) {
+          insertTextAtCursor(text);
+          notifyAction("Pasted");
+        }
 
         return;
       } catch {
@@ -169,6 +336,7 @@ export default function StudioObjectCard({
                 imageDataUrl: reader.result,
                 visualType: "image",
               } as Partial<StudioObject>);
+              notifyAction("Image pasted");
             }
           };
 
@@ -184,19 +352,16 @@ export default function StudioObjectCard({
       const text = await navigator.clipboard.readText();
 
       if (text) {
-        onUpdate(object.id, {
-          content: object.content ? `${object.content}\n\n${text}` : text,
-          icon:
-            text.length <= 4 && /\p{Extended_Pictographic}/u.test(text)
-              ? text
-              : object.icon,
-          visualType:
-            text.length <= 4 && /\p{Extended_Pictographic}/u.test(text)
-              ? "icon"
-              : visualObject.visualType,
-        } as Partial<StudioObject>);
+        insertTextAtCursor(text);
+        if (text.length <= 4 && /\p{Extended_Pictographic}/u.test(text)) {
+          onUpdate(object.id, {
+            icon: text,
+          } as Partial<StudioObject>);
+        }
+        notifyAction("Pasted");
       }
     } catch {
+      notifyAction("Paste unavailable");
       return;
     }
   };
@@ -209,12 +374,18 @@ export default function StudioObjectCard({
       chartData: undefined,
       chartType: undefined,
       visualType: undefined,
+      embeddedVisuals: undefined,
+      visualInsertIndex: undefined,
       icon: undefined,
     } as Partial<StudioObject>);
+    notifyAction("Visual removed");
   };
 
-  const renderChart = () => {
-    const data = visualObject.chartData || [];
+  const renderChart = (
+    chartData = visualObject.chartData || [],
+    chartType = visualObject.chartType
+  ) => {
+    const data = chartData;
     const maxValue = Math.max(...data.map((row) => row.value), 1);
 
     if (!data.length) {
@@ -222,6 +393,10 @@ export default function StudioObjectCard({
         <textarea
           value={object.content}
           onPointerDown={(event) => event.stopPropagation()}
+          onFocus={(event) => recordCursor(event.currentTarget)}
+          onClick={(event) => recordCursor(event.currentTarget)}
+          onKeyUp={(event) => recordCursor(event.currentTarget)}
+          onSelect={(event) => recordCursor(event.currentTarget)}
           onChange={(event) => onUpdate(object.id, { content: event.target.value })}
           readOnly={object.locked}
           style={textareaStyle}
@@ -230,7 +405,7 @@ export default function StudioObjectCard({
       );
     }
 
-    if (visualObject.chartType === "line" || visualObject.chartType === "scatter") {
+    if (chartType === "line" || chartType === "scatter") {
       const points = data
         .map((row, index) => {
           const x = 36 + (index / Math.max(data.length - 1, 1)) * 348;
@@ -279,6 +454,150 @@ export default function StudioObjectCard({
   };
 
   const renderBody = () => {
+    const renderTextEditor = () => (
+      <textarea
+        value={object.content}
+        onPointerDown={(event) => event.stopPropagation()}
+        onFocus={(event) => recordCursor(event.currentTarget)}
+        onClick={(event) => recordCursor(event.currentTarget)}
+        onKeyUp={(event) => recordCursor(event.currentTarget)}
+        onSelect={(event) => recordCursor(event.currentTarget)}
+        onChange={(event) => onUpdate(object.id, { content: event.target.value })}
+        readOnly={object.locked}
+        style={textareaStyle}
+      />
+    );
+
+    const renderTextSegment = (
+      value: string,
+      offset: number,
+      onChange: (value: string) => void
+    ) => (
+      <textarea
+        value={value}
+        onPointerDown={(event) => event.stopPropagation()}
+        onFocus={(event) => {
+          const start = offset + event.currentTarget.selectionStart;
+          const end = offset + event.currentTarget.selectionEnd;
+          contentCursor.current = { start, end };
+          onContentCursorChange(object.id, start, end);
+        }}
+        onClick={(event) => {
+          const start = offset + event.currentTarget.selectionStart;
+          const end = offset + event.currentTarget.selectionEnd;
+          contentCursor.current = { start, end };
+          onContentCursorChange(object.id, start, end);
+        }}
+        onKeyUp={(event) => {
+          const start = offset + event.currentTarget.selectionStart;
+          const end = offset + event.currentTarget.selectionEnd;
+          contentCursor.current = { start, end };
+          onContentCursorChange(object.id, start, end);
+        }}
+        onSelect={(event) => {
+          const start = offset + event.currentTarget.selectionStart;
+          const end = offset + event.currentTarget.selectionEnd;
+          contentCursor.current = { start, end };
+          onContentCursorChange(object.id, start, end);
+        }}
+        onChange={(event) => onChange(event.target.value)}
+        readOnly={object.locked}
+        style={textareaStyle}
+      />
+    );
+
+    const embeddedVisuals = getEmbeddedVisuals();
+    const shouldShowTextWithVisual =
+      object.type !== "chart" &&
+      object.type !== "icon" &&
+      embeddedVisuals.length > 0;
+
+    if (shouldShowTextWithVisual) {
+      const updateTextSegment = (start: number, end: number, value: string) => {
+        const nextContent = `${object.content.slice(0, start)}${value}${object.content.slice(end)}`;
+        const delta = value.length - (end - start);
+        const nextEmbeddedVisuals = embeddedVisuals.map((visual) => ({
+          ...visual,
+          insertIndex:
+            visual.insertIndex >= end
+              ? Math.max(0, visual.insertIndex + delta)
+              : visual.insertIndex,
+        }));
+
+        onUpdate(object.id, {
+          content: nextContent,
+          embeddedVisuals: nextEmbeddedVisuals,
+          imageDataUrl: undefined,
+          visualType: undefined,
+          chartType: undefined,
+          chartData: undefined,
+          visualInsertIndex: undefined,
+        } as Partial<StudioObject>);
+      };
+
+      let textCursor = 0;
+      const visualRows: ReactNode[] = [];
+
+      embeddedVisuals.forEach((visual, index) => {
+        const segmentStart = textCursor;
+        const segmentEnd = visual.insertIndex;
+        const segment = object.content.slice(segmentStart, segmentEnd);
+
+        visualRows.push(
+          <div key={`text-${visual.id}-${index}`} style={textSegmentFrameStyle}>
+            {renderTextSegment(segment, segmentStart, (value) =>
+              updateTextSegment(segmentStart, segmentEnd, value)
+            )}
+          </div>
+        );
+
+        visualRows.push(
+          <div
+            key={visual.id}
+            style={{
+              ...compactVisualBodyStyle,
+              height: visual.imageDataUrl ? embeddedImageHeight : embeddedChartHeight,
+            }}
+          >
+            {visual.imageDataUrl ? (
+              <img
+                src={visual.imageDataUrl}
+                alt={object.title}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  objectPosition: "center",
+                  borderRadius: 10,
+                  display: "block",
+                }}
+              />
+            ) : (
+              renderChart(visual.chartData || [], visual.chartType)
+            )}
+          </div>
+        );
+
+        textCursor = visual.insertIndex;
+      });
+
+      const finalSegmentStart = textCursor;
+      const finalSegment = object.content.slice(finalSegmentStart);
+      visualRows.push(
+        <div key="text-final" style={textSegmentFrameStyle}>
+          {renderTextSegment(finalSegment, finalSegmentStart, (value) =>
+            updateTextSegment(finalSegmentStart, object.content.length, value)
+          )}
+        </div>
+      );
+
+      return (
+        <div style={inlineVisualBodyStyle}>
+          {visualRows}
+        </div>
+      );
+    }
+
     if (visualObject.imageDataUrl) {
       return (
         <div style={visualBodyStyle}>
@@ -286,8 +605,8 @@ export default function StudioObjectCard({
             src={visualObject.imageDataUrl}
             alt={object.title}
             style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
+              width: "100%",
+              height: "100%",
               objectFit: "contain",
               borderRadius: 12,
             }}
@@ -310,15 +629,7 @@ export default function StudioObjectCard({
       );
     }
 
-    return (
-      <textarea
-        value={object.content}
-        onPointerDown={(event) => event.stopPropagation()}
-        onChange={(event) => onUpdate(object.id, { content: event.target.value })}
-        readOnly={object.locked}
-        style={textareaStyle}
-      />
-    );
+    return renderTextEditor();
   };
 
   return (
@@ -394,7 +705,10 @@ export default function StudioObjectCard({
             P
           </button>
 
-          {(visualObject.imageDataUrl || visualObject.visualType || object.icon) ? (
+          {(visualObject.imageDataUrl ||
+            visualObject.visualType ||
+            visualObject.embeddedVisuals?.length ||
+            object.icon) ? (
             <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={removeVisual} style={miniButtonStyle} title="Remove visual">
               R
             </button>
@@ -406,6 +720,7 @@ export default function StudioObjectCard({
             onClick={(event) => {
               event.stopPropagation();
               onDuplicate(object.id);
+              notifyAction("Duplicated");
             }}
             style={miniButtonStyle}
             title="Duplicate"
@@ -419,6 +734,7 @@ export default function StudioObjectCard({
             onClick={(event) => {
               event.stopPropagation();
               onDelete(object.id);
+              notifyAction("Deleted");
             }}
             style={miniButtonStyle}
             title="Delete card"
@@ -426,6 +742,12 @@ export default function StudioObjectCard({
             ×
           </button>
         </div>
+
+        {actionStatus ? (
+          <span style={actionStatusStyle} role="status" aria-live="polite">
+            {actionStatus}
+          </span>
+        ) : null}
       </div>
 
       {renderBody()}
@@ -508,6 +830,23 @@ const miniButtonStyle: CSSProperties = {
   placeItems: "center",
 };
 
+const actionStatusStyle: CSSProperties = {
+  position: "absolute",
+  top: 44,
+  right: 12,
+  zIndex: 4,
+  maxWidth: 160,
+  padding: "5px 8px",
+  borderRadius: 999,
+  background: "rgba(20, 33, 61, 0.92)",
+  color: "#ffffff",
+  fontSize: 11,
+  fontWeight: 800,
+  lineHeight: 1,
+  boxShadow: "0 8px 18px rgba(3, 7, 18, 0.2)",
+  pointerEvents: "none",
+};
+
 const smallSelectStyle: CSSProperties = {
   border: "1px solid rgba(43,88,118,0.16)",
   borderRadius: 999,
@@ -535,12 +874,34 @@ const visualBodyStyle: CSSProperties = {
   width: "100%",
   height: "100%",
   minHeight: 0,
+  minWidth: 0,
   borderRadius: 14,
   background: "rgba(255,255,255,0.55)",
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
   padding: 10,
+};
+
+const inlineVisualBodyStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridAutoRows: "minmax(34px, auto)",
+  gap: 8,
+  overflowY: "auto",
+};
+
+const textSegmentFrameStyle: CSSProperties = {
+  minHeight: 34,
+  display: "grid",
+};
+
+const compactVisualBodyStyle: CSSProperties = {
+  ...visualBodyStyle,
+  minHeight: 110,
+  padding: 8,
 };
 
 const iconBodyStyle: CSSProperties = {
