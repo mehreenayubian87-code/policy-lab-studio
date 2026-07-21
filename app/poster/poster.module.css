@@ -1289,12 +1289,12 @@
 }
 
 .zoomControls {
-  padding: 10px;
+  padding: 8px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.16);
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   background: rgba(8, 19, 33, 0.68);
 }
@@ -1303,13 +1303,19 @@
 .workspaceActions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .workspaceActions {
   margin-left: 0;
   justify-content: flex-start;
+}
+
+.zoomControls :global(.button) {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
 }
 
 .workspaceActions :global(.button).exportPdfButton {
@@ -1333,7 +1339,8 @@
   color: var(--hikma-blue-dark);
   background: var(--surface-cool);
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 @media print {
@@ -1462,14 +1469,27 @@
   }
 
   .zoomControls {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 8px;
-    gap: 8px;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 6px;
+    gap: 6px;
   }
 
   .zoomButtonGroup,
   .workspaceActions {
     width: 100%;
+    gap: 6px;
+  }
+
+  .zoomControls :global(.button) {
+    min-height: 30px;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .zoomControls span {
+    padding: 5px 8px;
+    font-size: 11px;
   }
 }
