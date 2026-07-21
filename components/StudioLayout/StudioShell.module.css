@@ -211,60 +211,93 @@
 
 @media (max-width: 900px) {
   .header {
-    align-items: flex-start;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
   }
 
   .headerRight,
   .navActions {
-    width: 100%;
+    width: auto;
     max-width: none;
   }
 
+  .navActions {
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .header :global(.button) {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .alertRow {
+    flex-basis: 100%;
+  }
+
+  .titleBlock {
+    gap: 6px;
+  }
+
+  .titleBlock span {
+    padding: 6px 9px;
+    font-size: 0.68rem;
+  }
+
+  .header h1 {
+    font-size: clamp(1.45rem, 5vw, 2.25rem);
+  }
+
   .shell {
-    height: clamp(540px, calc(100vh - 150px), 680px);
+    height: clamp(560px, calc(100dvh - 120px), 760px);
     min-height: 0;
   }
 
   .workspace {
-    inset: 44px 0 44px 0;
+    inset: 0 32px;
   }
 
   .panelToggle {
-    width: auto;
-    height: 44px;
-    left: 0;
-    right: 0;
-    bottom: auto;
-    writing-mode: horizontal-tb;
-    transform: none;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    height: auto;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 11px;
   }
 
   .leftToggle {
-    top: 0;
+    left: 0;
+    right: auto;
   }
 
   .rightToggle {
-    top: auto;
-    bottom: 0;
+    left: auto;
+    right: 0;
   }
 
   .toolsPanel,
   .reviewPanel {
-    left: 0;
-    right: 0;
-    width: auto;
-    max-height: 360px;
+    top: 0;
+    bottom: 0;
+    width: min(300px, calc(100% - 64px));
+    max-height: none;
+    padding: 10px;
   }
 
   .toolsPanel {
-    top: 44px;
-    bottom: auto;
+    left: 32px;
+    right: auto;
   }
 
   .reviewPanel {
-    top: auto;
-    bottom: 44px;
+    left: auto;
+    right: 32px;
   }
 }
 
@@ -295,11 +328,13 @@
 
 @media (max-width: 620px) {
   .studioPage {
-    padding: 10px;
+    padding: 8px;
   }
 
   .header {
-    padding: 18px 14px;
+    grid-template-columns: 1fr;
+    padding: 12px;
+    margin-bottom: 8px;
   }
 
   .navActions {
@@ -311,6 +346,61 @@
   }
 
   .shell {
-    height: clamp(520px, calc(100vh - 168px), 640px);
+    height: clamp(560px, calc(100dvh - 128px), 760px);
+    border-radius: 12px;
+  }
+
+  .workspace {
+    inset: 0 28px;
+  }
+
+  .panelToggle {
+    width: 28px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .toolsPanel,
+  .reviewPanel {
+    width: min(280px, calc(100% - 56px));
+  }
+
+  .toolsPanel {
+    left: 28px;
+  }
+
+  .reviewPanel {
+    right: 28px;
+  }
+}
+
+@media (max-height: 700px) {
+  .studioPage {
+    padding: 8px;
+  }
+
+  .header {
+    min-height: 0;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+
+  .titleBlock span {
+    padding: 5px 8px;
+    font-size: 0.66rem;
+  }
+
+  .header h1 {
+    font-size: clamp(1.35rem, 4vw, 2.1rem);
+  }
+
+  .header :global(.button) {
+    min-height: 32px;
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+
+  .shell {
+    height: calc(100dvh - 96px);
   }
 }

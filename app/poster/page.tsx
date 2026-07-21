@@ -169,7 +169,7 @@ const getProjectObjectImportKey = (object: ProjectObject) => {
       ? "image"
       : object.chartData?.length || object.visualType === "chart" || object.type === "chart" || hasEmbeddedChart
       ? "chart"
-      : object.icon || object.visualType === "icon" || object.type === "icon"
+      : object.visualType === "icon" || object.type === "icon"
       ? "icon"
       : object.type;
 
@@ -178,6 +178,14 @@ const getProjectObjectImportKey = (object: ProjectObject) => {
 
 const getElementSelectionKey = (object: ProjectObject) =>
   `${object.studioId}:${object.id}`;
+
+const stripLeadingDefaultIcon = (value: string) =>
+  value.replace(/^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation})(?:\uFE0F|\uFE0F\u20E3)?\s+/u, "");
+
+const isImportedDefaultIconBlock = (block: PosterBlock) =>
+  isImportedBlock(block) &&
+  block.kind === "icon" &&
+  !block.title.toLowerCase().includes("icon");
 
 export default function PosterStudioPage() {
   const { project, importObjects, appendAlert, updateStudioState } = useProject();
@@ -601,7 +609,7 @@ export default function PosterStudioPage() {
     }
 
     if (key === "icons") {
-      return Boolean(object.icon) || object.visualType === "icon" || object.type === "icon";
+      return object.visualType === "icon" || object.type === "icon";
     }
 
     return importTypeMap[key]?.includes(object.type) ?? false;
@@ -619,7 +627,7 @@ export default function PosterStudioPage() {
         ? "image"
         : object.chartData?.length || object.visualType === "chart" || object.type === "chart"
         ? "chart"
-        : object.icon || object.visualType === "icon" || object.type === "icon"
+        : object.visualType === "icon" || object.type === "icon"
         ? "icon"
         : "textbox";
     const accent = kind === "chart" ? "#2b5876" : kind === "icon" ? "#4e4376" : currentTheme.accent;
@@ -635,7 +643,7 @@ export default function PosterStudioPage() {
       width: clampPosterSize(object.width, kind === "icon" ? 340 : kind === "image" ? 420 : 440, 260, 620),
       height: clampPosterSize(object.height, kind === "chart" ? 240 : kind === "image" ? 260 : 190, 150, 420),
       kind,
-      content: object.content || object.title,
+      content: stripLeadingDefaultIcon(object.content || object.title),
       imageUrl: object.imageDataUrl,
       caption: kind === "image" ? object.content : undefined,
       altText: kind === "image" ? object.title : undefined,
@@ -1521,18 +1529,22 @@ export default function PosterStudioPage() {
       return <div className={styles.chartPreview}>{renderPosterChart(block, imported)}</div>;
     }
     if (block.kind === "icon") {
+      if (isImportedDefaultIconBlock(block)) {
+        return <p className={styles.importedTextContent}>{stripLeadingDefaultIcon(block.content)}</p>;
+      }
+
       return <div className={styles.iconPreview}><div>{block.icon || "◆"}</div><span>{block.content}</span></div>;
     }
     if (block.kind === "divider") return <div className={styles.dividerLine} style={{ background: block.accent }} />;
     if (block.embeddedVisuals?.length) {
       return (
         <div className={styles.importedCompositeContent}>
-          {block.content ? <p className={styles.importedTextContent}>{block.content}</p> : null}
+          {block.content ? <p className={styles.importedTextContent}>{stripLeadingDefaultIcon(block.content)}</p> : null}
           {renderEmbeddedVisualCard(block)}
         </div>
       );
     }
-    return <p className={imported ? styles.importedTextContent : undefined}>{block.content}</p>;
+    return <p className={imported ? styles.importedTextContent : undefined}>{imported ? stripLeadingDefaultIcon(block.content) : block.content}</p>;
   };
 
   const getBlockBackground = (block: PosterBlock) => {

@@ -1013,6 +1013,89 @@ select {
   }
 }
 
+@media (max-width: 900px), (max-height: 760px) {
+  .panelCard {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .panelHeader {
+    margin-bottom: 10px;
+  }
+
+  .panelHeader h2,
+  .panelHeader h3 {
+    margin-bottom: 4px;
+    font-size: 1rem;
+  }
+
+  .panelHint {
+    padding: 9px;
+    font-size: 0.82rem;
+  }
+
+  .toolCard {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .studioWorkspaceHeader {
+    padding: 10px 12px;
+  }
+
+  .studioWorkspaceHeader h2 {
+    margin-bottom: 2px;
+    font-size: 1.05rem;
+  }
+
+  .studioWorkspaceHeader .fieldNote {
+    font-size: 0.78rem;
+  }
+
+  .studioToolbar {
+    padding: 6px 8px;
+    gap: 5px;
+  }
+
+  .studioToolbar .button {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+
+  .studioCanvasSurface {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .panelCard {
+    padding: 10px;
+  }
+
+  .panelHint {
+    padding: 8px;
+  }
+
+  .studioWorkspaceHeader {
+    padding: 8px 10px;
+  }
+
+  .studioWorkspaceHeader h2 {
+    font-size: 0.98rem;
+  }
+
+  .studioWorkspaceHeader .fieldNote {
+    font-size: 0.72rem;
+  }
+
+  .studioToolbar .button {
+    min-height: 28px;
+    padding: 4px 7px;
+    font-size: 0.72rem;
+  }
+}
+
 /* RIGHT IMAGE */
 .heroVisual {
   border-radius: 14px;

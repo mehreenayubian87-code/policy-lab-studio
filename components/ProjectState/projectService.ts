@@ -58,7 +58,10 @@ export function readStudioObjects(
       color: object.color,
       width: object.width,
       height: object.height,
-      icon: object.icon,
+      icon:
+        object.type === "icon" || object.visualType === "icon"
+          ? object.icon
+          : undefined,
       imageDataUrl: object.imageDataUrl,
       visualType: object.visualType,
       chartType: object.chartType,
@@ -101,12 +104,15 @@ export function readAllStudioObjectsFromProject(project: ProjectState): ProjectO
           id: object.id,
           title: object.title,
           type: object.type,
-          content: [object.icon, object.content].filter(Boolean).join(" ").trim(),
+          content: object.content ?? "",
           studioId,
           color: object.color,
           width: object.width,
           height: object.height,
-          icon: object.icon,
+          icon:
+            object.type === "icon" || object.visualType === "icon"
+              ? object.icon
+              : undefined,
           imageDataUrl: object.imageDataUrl,
           visualType: object.visualType,
           chartType: object.chartType,
