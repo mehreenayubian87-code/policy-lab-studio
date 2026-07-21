@@ -329,6 +329,167 @@
   line-height: 1.3;
 }
 
+.smartArtGroupList {
+  display: grid;
+  gap: 12px;
+  margin: 10px 0 14px;
+}
+
+.smartArtGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.smartArtIconRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.smartArtIconButton {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: #f6ad55;
+  border-radius: 12px;
+  min-height: 62px;
+  padding: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.smartArtIconButton:hover {
+  border-color: rgba(94, 234, 212, 0.5);
+  background: rgba(94, 234, 212, 0.14);
+  color: #fff7ed;
+  box-shadow: 0 10px 24px rgba(3, 7, 18, 0.2);
+}
+
+.smartArtPickerPreview {
+  width: 100%;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+  overflow: hidden;
+}
+
+.smartArtPickerArrow {
+  height: 30px;
+}
+
+.smartArtPickerArrowVertical {
+  height: 44px;
+}
+
+.smartArtPickerPreview .smartArtArrow {
+  width: 88%;
+}
+
+.smartArtArrowRotate180 {
+  transform: rotate(180deg);
+}
+
+.smartArtArrowRotate90 {
+  transform: rotate(90deg);
+}
+
+.smartArtArrowRotateMinus90 {
+  transform: rotate(-90deg);
+}
+
+.smartArtPickerPreview .smartArtArrowBody {
+  height: 8px;
+}
+
+.smartArtPickerPreview .smartArtArrowHead {
+  border-top-width: 10px;
+  border-bottom-width: 10px;
+  border-left-width: 16px;
+}
+
+.smartArtPickerPreview .smartArtArrowHeadLeft {
+  border-top-width: 10px;
+  border-bottom-width: 10px;
+  border-right-width: 16px;
+}
+
+.smartArtPickerPreview .smartArtArrowVertical {
+  width: 28px;
+  height: 100%;
+}
+
+.smartArtPickerPreview .smartArtArrowBodyVertical {
+  width: 8px;
+}
+
+.smartArtPickerPreview .smartArtArrowHeadUp,
+.smartArtPickerPreview .smartArtArrowHeadDown {
+  border-left-width: 10px;
+  border-right-width: 10px;
+}
+
+.smartArtPickerPreview .smartArtArrowHeadUp {
+  border-bottom-width: 16px;
+}
+
+.smartArtPickerPreview .smartArtArrowHeadDown {
+  border-top-width: 16px;
+}
+
+.smartArtPickerPreview .smartArtLine {
+  width: 88%;
+  height: 3px;
+}
+
+.smartArtPickerPreview .smartArtLineVertical {
+  width: 3px;
+  height: 88%;
+}
+
+.smartArtPickerPreview .smartArtConnectorElbow {
+  width: 84%;
+  height: 84%;
+}
+
+.smartArtPickerPreview .smartArtConnectorElbowVertical {
+  left: 18%;
+  top: 10%;
+  width: 4px;
+  height: 62%;
+}
+
+.smartArtPickerPreview .smartArtConnectorElbowHorizontal {
+  left: 18%;
+  bottom: 24%;
+  width: 52%;
+  height: 4px;
+}
+
+.smartArtPickerPreview .smartArtConnectorCurve {
+  width: 88%;
+  height: 88%;
+}
+
+.smartArtPickerPreview .smartArtConnectorCurve path {
+  stroke-width: 6px;
+}
+
+.smartArtPickerPreview .smartArtChevron {
+  width: 82%;
+  height: 58%;
+  padding: 0;
+}
+
+.smartArtPickerPreview .smartArtRectangle,
+.smartArtPickerPreview .smartArtCircle {
+  width: 74%;
+  height: 74%;
+  padding: 0;
+  border-width: 3px;
+  background: transparent;
+}
+
 .toolCardActive {
   border: 2px solid rgba(94, 234, 212, 0.72);
   background: rgba(94, 234, 212, 0.16);
@@ -551,17 +712,23 @@
   overflow: auto;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(239, 252, 248, 0.9));
-  padding: 22px;
+  padding: 2px;
 }
 
 .zoomLayer {
+  position: relative;
   transform-origin: top left;
+  overflow: visible;
 }
 
 .posterPaper {
+  position: absolute;
+  inset: 0 auto auto 0;
+  box-sizing: border-box;
+  transform-origin: top left;
   border: 1px solid rgba(43, 88, 118, 0.14);
-  box-shadow: 0 20px 50px rgba(43, 88, 118, 0.14);
-  padding: 18px;
+  box-shadow: 0 12px 30px rgba(43, 88, 118, 0.12);
+  padding: 8px;
 }
 
 .posterHeader {
@@ -584,6 +751,16 @@
   display: grid;
   place-items: center;
   font-size: 42px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.logoImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  padding: 8px;
 }
 
 .posterHeader h1 {
@@ -614,7 +791,7 @@
   overflow: hidden;
   cursor: pointer;
   transition: border 0.15s ease, background 0.15s ease;
-  color: var(--hikma-ink) !important;
+  color: var(--block-text-color, inherit);
   background-clip: padding-box;
 }
 
@@ -622,7 +799,7 @@
   line-height: 1.5;
   margin: 0;
   font-size: 14px;
-  color: var(--hikma-ink) !important;
+  color: var(--block-text-color, inherit);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -633,7 +810,7 @@
 .posterBlock:not(.importedBlock) .iconPreview,
 .posterBlock:not(.importedBlock) .chartPreview span,
 .posterBlock:not(.importedBlock) .iconPreview span {
-  color: #111827 !important;
+  color: inherit !important;
   text-shadow: none !important;
 }
 
@@ -661,12 +838,13 @@
 }
 
 .calloutBlock .blockTitleRow strong {
-  color: #7c3f10 !important;
+  color: inherit !important;
 }
 
 .calloutBlock > p {
   background: rgba(255, 255, 255, 0.58) !important;
   border-left: 5px solid #d4a574;
+  color: inherit !important;
   font-size: 15px;
   font-weight: 800;
   line-height: 1.45;
@@ -674,7 +852,7 @@
 
 .importedBlock {
   overflow: auto;
-  color: #111827 !important;
+  color: var(--block-text-color, inherit);
   scrollbar-width: thin;
 }
 
@@ -683,12 +861,12 @@
 .importedBlock span,
 .importedBlock strong,
 .importedBlock div {
-  color: #111827 !important;
+  color: inherit !important;
   text-shadow: none !important;
 }
 
 .importedBlock .blockTitleRow strong {
-  color: #0b2f37 !important;
+  color: inherit !important;
 }
 
 .importedBlock .blockTitleRow span {
@@ -698,7 +876,7 @@
 .importedTextContent {
   max-height: calc(100% - 42px);
   overflow: auto;
-  color: #111827 !important;
+  color: inherit !important;
   background: rgba(255, 255, 255, 0.34);
   border-radius: 6px;
   padding: 8px;
@@ -763,7 +941,7 @@
 }
 
 .blockTitleRow strong {
-  color: var(--hikma-blue-dark) !important;
+  color: inherit !important;
   font-size: 14px;
 }
 
@@ -913,7 +1091,7 @@
 
 .chartPreview *,
 .iconPreview * {
-  color: var(--hikma-ink) !important;
+  color: inherit !important;
 }
 
 .chartPreview strong,
@@ -962,11 +1140,159 @@
   margin-top: 8px;
 }
 
+.shapeBlock {
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.smartArtWrap {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  background: transparent !important;
+}
+
+.smartArtLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hikma-blue-dark);
+  text-align: center;
+}
+
+.smartArtLine {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.smartArtArrow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.smartArtArrowBody {
+  flex: 1;
+  height: 16px;
+  border-radius: 999px 0 0 999px;
+  background: currentColor;
+}
+
+.smartArtArrowHead {
+  width: 0;
+  height: 0;
+  border-top: 24px solid transparent;
+  border-bottom: 24px solid transparent;
+  border-left: 44px solid;
+  border-left-color: currentColor;
+}
+
+.smartArtArrowVertical {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.smartArtArrowBodyVertical {
+  width: 16px;
+  flex: 1;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.smartArtLineVertical {
+  width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.smartArtConnectorElbow {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.smartArtConnectorElbowVertical {
+  position: absolute;
+  left: 14%;
+  top: 8%;
+  width: 6px;
+  height: 74%;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.smartArtConnectorElbowHorizontal {
+  position: absolute;
+  left: 14%;
+  bottom: 18%;
+  width: 68%;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.smartArtConnectorCurve {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.smartArtConnectorCurve path {
+  stroke: currentColor;
+}
+
+.smartArtChevron {
+  width: 100%;
+  height: 70%;
+  clip-path: polygon(0% 15%, 70% 15%, 100% 50%, 70% 85%, 0% 85%, 24% 50%);
+  display: grid;
+  place-items: center;
+  padding: 10px 42px 10px 18px;
+  text-align: center;
+  background: currentColor;
+}
+
+.smartArtChevronText {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.smartArtRectangle,
+.smartArtCircle {
+  width: 100%;
+  height: 100%;
+  border: 4px solid;
+  border-color: currentColor;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-weight: 700;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.smartArtCircle {
+  border-radius: 999px;
+}
+
 .zoomControls {
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.16);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -982,8 +1308,24 @@
 }
 
 .workspaceActions {
-  margin-left: auto;
-  justify-content: flex-end;
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+.workspaceActions :global(.button).exportPdfButton {
+  background: linear-gradient(135deg, #d4a574, #b78145);
+  color: #081321 !important;
+  border-color: rgba(246, 173, 85, 0.9);
+  box-shadow: 0 10px 26px rgba(124, 90, 44, 0.28);
+  font-weight: 900;
+}
+
+.workspaceActions :global(.button).exportPdfButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e0b382, #c88e52);
+  color: #081321 !important;
+  border-color: rgba(255, 214, 140, 0.95);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(124, 90, 44, 0.34);
 }
 
 .zoomControls span {
