@@ -10,6 +10,12 @@ import {
   saveStudioState,
   trySetLocalStorageItem,
 } from "@/components/ProjectState/projectStorage";
+import {
+  buildStudioRealtimeChannelName,
+  getSupabaseBrowserClient,
+  removeRealtimeChannel,
+} from "@/components/ProjectState/supabaseRealtime";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ObjectType,
   StudioConfig,
@@ -84,6 +90,7 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const applyingRemoteState = useRef(false);
   const lastLocalEditAt = useRef(0);
   const latestStudioStateJson = useRef("");
+  const realtimeChannel = useRef<RealtimeChannel | null>(null);
   const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>(initialStudioState.checklistState);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -163,6 +170,56 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
     [objects, connections, zoom, checklistState]
   );
 
+  const applyRemoteStudioState = useCallback(
+    async (options: { showMessage?: boolean } = {}) => {
+      if (!project.setup.projectNumber.trim() || !project.setup.projectPassword) return;
+      if (Date.now() - lastLocalEditAt.current < 1200) return;
+
+      const remoteState = await loadStudioState(
+        project.setup.projectNumber,
+        project.setup.projectPassword,
+        config.studioId
+      );
+
+      if (!remoteState || typeof remoteState !== "object") return;
+
+      let remoteJson = "";
+      try {
+        remoteJson = JSON.stringify(remoteState);
+      } catch {
+        return;
+      }
+
+      if (!remoteJson || remoteJson === latestStudioStateJson.current) return;
+
+      const data = remoteState as {
+        objects?: StudioObject[];
+        connections?: StudioConnection[];
+        zoom?: number;
+        checklistState?: Record<string, boolean>;
+      };
+
+      applyingRemoteState.current = true;
+      if (Array.isArray(data.objects)) setObjects(data.objects);
+      if (Array.isArray(data.connections)) setConnections(data.connections);
+      if (typeof data.zoom === "number") setZoom(data.zoom);
+      if (data.checklistState && typeof data.checklistState === "object") {
+        setChecklistState(data.checklistState);
+      }
+      latestStudioStateJson.current = remoteJson;
+
+      if (options.showMessage) {
+        setSaved("Synced latest team changes.");
+        setTimeout(() => setSaved(""), 1800);
+      }
+    },
+    [
+      config.studioId,
+      project.setup.projectNumber,
+      project.setup.projectPassword,
+    ]
+  );
+
   const persistStudioState = useCallback(
     async (
       studioState: ReturnType<typeof buildStudioState>,
@@ -191,6 +248,14 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
 
       if (remoteProject) {
         replaceProject(remoteProject);
+        void realtimeChannel.current?.send({
+          type: "broadcast",
+          event: "studio-state-changed",
+          payload: {
+            studioId: config.studioId,
+            savedAt: studioState.savedAt,
+          },
+        });
         if (options.showMessage) {
           setSaved("Progress saved to Supabase.");
           setTimeout(() => setSaved(""), 2200);
@@ -209,6 +274,43 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
       updateStudioState,
     ]
   );
+
+  useEffect(() => {
+    const projectNumber = project.setup.projectNumber.trim();
+    if (!projectNumber) return;
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const channel = supabase.channel(
+      buildStudioRealtimeChannelName(projectNumber, config.studioId),
+      {
+        config: {
+          broadcast: {
+            self: false,
+          },
+        },
+      }
+    );
+
+    realtimeChannel.current = channel;
+    channel
+      .on("broadcast", { event: "studio-state-changed" }, () => {
+        void applyRemoteStudioState({ showMessage: true });
+      })
+      .subscribe();
+
+    return () => {
+      removeRealtimeChannel(channel);
+      if (realtimeChannel.current === channel) {
+        realtimeChannel.current = null;
+      }
+    };
+  }, [
+    applyRemoteStudioState,
+    config.studioId,
+    project.setup.projectNumber,
+  ]);
 
   const handleSelectObject = (id: string, multiSelect: boolean) => {
   setSelectedId(id);
@@ -525,46 +627,12 @@ const deleteConnection = (id: string) => {
     if (!project.setup.projectNumber.trim() || !project.setup.projectPassword) return;
 
     const timer = window.setInterval(async () => {
-      if (Date.now() - lastLocalEditAt.current < 2500) return;
-
-      const remoteState = await loadStudioState(
-        project.setup.projectNumber,
-        project.setup.projectPassword,
-        config.studioId
-      );
-
-      if (!remoteState || typeof remoteState !== "object") return;
-
-      let remoteJson = "";
-      try {
-        remoteJson = JSON.stringify(remoteState);
-      } catch {
-        return;
-      }
-
-      if (!remoteJson || remoteJson === latestStudioStateJson.current) return;
-
-      const data = remoteState as {
-        objects?: StudioObject[];
-        connections?: StudioConnection[];
-        zoom?: number;
-        checklistState?: Record<string, boolean>;
-      };
-
-      applyingRemoteState.current = true;
-      if (Array.isArray(data.objects)) setObjects(data.objects);
-      if (Array.isArray(data.connections)) setConnections(data.connections);
-      if (typeof data.zoom === "number") setZoom(data.zoom);
-      if (data.checklistState && typeof data.checklistState === "object") {
-        setChecklistState(data.checklistState);
-      }
-      latestStudioStateJson.current = remoteJson;
-      setSaved("Synced latest team changes.");
-      setTimeout(() => setSaved(""), 1800);
-    }, 5000);
+      await applyRemoteStudioState({ showMessage: false });
+    }, 30000);
 
     return () => window.clearInterval(timer);
   }, [
+    applyRemoteStudioState,
     config.studioId,
     project.setup.projectNumber,
     project.setup.projectPassword,
