@@ -108,6 +108,75 @@ function normalizeProjectState(value: unknown): StoredProjectState | null {
   };
 }
 
+function getStateSavedTime(value: unknown) {
+  if (!value || typeof value !== "object") return 0;
+
+  const savedAt = (value as { savedAt?: unknown }).savedAt;
+  if (typeof savedAt !== "string") return 0;
+
+  const time = Date.parse(savedAt);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function mergeStudioStates(
+  existing: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined
+) {
+  const merged: Record<string, unknown> = {
+    ...(existing || {}),
+  };
+
+  for (const [studioId, incomingState] of Object.entries(incoming || {})) {
+    const existingState = merged[studioId];
+    const existingTime = getStateSavedTime(existingState);
+    const incomingTime = getStateSavedTime(incomingState);
+
+    if (!existingState || incomingTime >= existingTime) {
+      merged[studioId] = incomingState;
+    }
+  }
+
+  return merged;
+}
+
+function mergeAlerts(
+  existing: StoredProjectState["alerts"] | undefined,
+  incoming: StoredProjectState["alerts"] | undefined
+) {
+  const alertsById = new Map<string, StoredProjectState["alerts"][number]>();
+
+  for (const alert of [...(existing || []), ...(incoming || [])]) {
+    if (!alert?.id) continue;
+    alertsById.set(alert.id, alert);
+  }
+
+  return Array.from(alertsById.values()).sort(
+    (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)
+  );
+}
+
+function mergeProjectStates(
+  existing: StoredProjectState | null,
+  incoming: StoredProjectState,
+  updatedAt: string
+): StoredProjectState {
+  if (!existing) {
+    return {
+      ...incoming,
+      updatedAt,
+    };
+  }
+
+  return {
+    ...incoming,
+    objects: incoming.objects.length > 0 ? incoming.objects : existing.objects,
+    studioStates: mergeStudioStates(existing.studioStates, incoming.studioStates),
+    notes: incoming.notes.length > 0 ? incoming.notes : existing.notes,
+    alerts: mergeAlerts(existing.alerts, incoming.alerts),
+    updatedAt,
+  };
+}
+
 function toSummary(row: {
   project_number: string;
   group_number: string | null;
@@ -140,7 +209,7 @@ export async function saveProjectToSupabase(projectInput: unknown) {
 
   const projectNumber = normalizeProjectNumber(project.setup.projectNumber);
   const updatedAt = new Date().toISOString();
-  const projectState: StoredProjectState = {
+  const incomingProjectState: StoredProjectState = {
     ...project,
     setup: {
       ...project.setup,
@@ -148,6 +217,12 @@ export async function saveProjectToSupabase(projectInput: unknown) {
     },
     updatedAt,
   };
+  const existingProject = await loadProjectFromSupabase(projectNumber);
+  const projectState = mergeProjectStates(
+    existingProject,
+    incomingProjectState,
+    updatedAt
+  );
 
   const { data, error } = await supabaseAdmin
     .from("team_projects")
@@ -172,6 +247,58 @@ export async function saveProjectToSupabase(projectInput: unknown) {
   }
 
   return data.project_state as StoredProjectState;
+}
+
+export async function saveStudioStateToSupabase(
+  projectNumberInput: string,
+  projectPassword: string,
+  studioId: string,
+  studioState: unknown
+) {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const projectNumber = normalizeProjectNumber(projectNumberInput);
+  if (!projectNumber || !studioId.trim()) return null;
+
+  const existingProject = await loadProjectWithPasswordFromSupabase(
+    projectNumber,
+    projectPassword
+  );
+
+  if (!existingProject) return null;
+
+  const updatedAt = new Date().toISOString();
+  const nextProjectState: StoredProjectState = {
+    ...existingProject,
+    setup: {
+      ...existingProject.setup,
+      projectNumber,
+    },
+    studioStates: {
+      ...(existingProject.studioStates || {}),
+      [studioId]: studioState,
+    },
+    updatedAt,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("team_projects")
+    .update({
+      project_state: nextProjectState,
+      updated_at: updatedAt,
+    })
+    .in("project_number", projectNumberCandidates(projectNumber))
+    .select("project_state")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.project_state as StoredProjectState | undefined) ?? nextProjectState;
 }
 
 export async function listProjectsFromSupabase() {

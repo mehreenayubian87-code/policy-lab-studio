@@ -360,6 +360,76 @@ export async function loadProjectByNumberAndPassword(
   return null;
 }
 
+export async function saveStudioState(
+  projectNumber: string,
+  projectPassword: string,
+  studioId: string,
+  state: unknown
+) {
+  const normalized = normalizeProjectNumber(projectNumber);
+  if (!normalized || !projectPassword || !studioId.trim()) return null;
+
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(normalized)}/studio-states/${encodeURIComponent(studioId)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          password: projectPassword,
+          state,
+        }),
+      }
+    );
+    const data = await readJsonResponse<{
+      ok: boolean;
+      project?: ProjectState;
+    }>(response);
+
+    if (data?.ok && data.project) {
+      trySetLocalStorageItem(
+        getStorageKey(normalized),
+        JSON.stringify(data.project)
+      );
+      return data.project;
+    }
+  } catch (error) {
+    console.error("Unable to save studio state to Supabase:", error);
+  }
+
+  return null;
+}
+
+export async function loadStudioState(
+  projectNumber: string,
+  projectPassword: string,
+  studioId: string
+) {
+  const normalized = normalizeProjectNumber(projectNumber);
+  if (!normalized || !projectPassword || !studioId.trim()) return null;
+
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(normalized)}/studio-states/${encodeURIComponent(studioId)}?password=${encodeURIComponent(projectPassword)}`
+    );
+    const data = await readJsonResponse<{
+      ok: boolean;
+      state?: unknown;
+      updatedAt?: string | null;
+    }>(response);
+
+    if (data?.ok) {
+      return data.state ?? null;
+    }
+  } catch (error) {
+    console.error("Unable to load studio state from Supabase:", error);
+  }
+
+  return null;
+}
+
 export function isProjectNumberTaken(
   projectNumber: string,
   currentProjectId?: string

@@ -1,10 +1,15 @@
 "use client";
 
 import StudioResources from "@/components/ResourceHub/StudioResources";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import StudioShell from "@/components/StudioLayout/StudioShell";
-import { getProjectStudioStorageKey } from "@/components/ProjectState/projectStorage";
+import {
+  getProjectStudioStorageKey,
+  loadStudioState,
+  saveStudioState,
+  trySetLocalStorageItem,
+} from "@/components/ProjectState/projectStorage";
 import type {
   ObjectType,
   StudioConfig,
@@ -23,7 +28,7 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const SNAP_SIZE = 28;
   const WORKSPACE_WIDTH = 6000;
   const WORKSPACE_HEIGHT = 4200;
-  const { project, appendAlert, updateStudioState } = useProject();
+  const { project, appendAlert, replaceProject, updateStudioState } = useProject();
   const projectScopedStorageKey = getProjectStudioStorageKey(
     project.setup.projectNumber,
     config.storageKey
@@ -76,6 +81,9 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter">("bar");
   const [chartDataText, setChartDataText] = useState("Category,Value\nA,10\nB,20\nC,15");
   const hydratedProjectKey = useRef("");
+  const applyingRemoteState = useRef(false);
+  const lastLocalEditAt = useRef(0);
+  const latestStudioStateJson = useRef("");
   const [showGuidanceOptions, setShowGuidanceOptions] = useState(false);
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>(initialStudioState.checklistState);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -115,6 +123,7 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
       setZoom(1);
       setChecklistState({});
       hydratedProjectKey.current = projectKey;
+      latestStudioStateJson.current = "";
       return;
     }
 
@@ -136,7 +145,70 @@ export default function StudioEngine({ config }: { config: StudioConfig }) {
     }
 
     hydratedProjectKey.current = projectKey;
+    try {
+      latestStudioStateJson.current = JSON.stringify(storedState);
+    } catch {
+      latestStudioStateJson.current = "";
+    }
   }, [config.studioId, project.setup.projectNumber, project.studioStates]);
+
+  const buildStudioState = useCallback(
+    () => ({
+      objects,
+      connections,
+      zoom,
+      checklistState,
+      savedAt: new Date().toISOString(),
+    }),
+    [objects, connections, zoom, checklistState]
+  );
+
+  const persistStudioState = useCallback(
+    async (
+      studioState: ReturnType<typeof buildStudioState>,
+      options: { remote?: boolean; showMessage?: boolean } = {}
+    ) => {
+      if (projectScopedStorageKey) {
+        trySetLocalStorageItem(projectScopedStorageKey, JSON.stringify(studioState));
+      }
+
+      updateStudioState(config.studioId, studioState);
+
+      try {
+        latestStudioStateJson.current = JSON.stringify(studioState);
+      } catch {
+        latestStudioStateJson.current = "";
+      }
+
+      if (!options.remote) return;
+
+      const remoteProject = await saveStudioState(
+        project.setup.projectNumber,
+        project.setup.projectPassword,
+        config.studioId,
+        studioState
+      );
+
+      if (remoteProject) {
+        replaceProject(remoteProject);
+        if (options.showMessage) {
+          setSaved("Progress saved to Supabase.");
+          setTimeout(() => setSaved(""), 2200);
+        }
+      } else if (options.showMessage) {
+        setSaved("Unable to save. Check your connection.");
+        setTimeout(() => setSaved(""), 2600);
+      }
+    },
+    [
+      config.studioId,
+      project.setup.projectNumber,
+      project.setup.projectPassword,
+      projectScopedStorageKey,
+      replaceProject,
+      updateStudioState,
+    ]
+  );
 
   const handleSelectObject = (id: string, multiSelect: boolean) => {
   setSelectedId(id);
@@ -323,7 +395,7 @@ const distributeSelected = (direction: "horizontal" | "vertical") => {
     setSelectedId(target.id);
     setSelectedIds([target.id]);
     if (projectScopedStorageKey) {
-      localStorage.setItem(projectScopedStorageKey, JSON.stringify(studioState));
+      trySetLocalStorageItem(projectScopedStorageKey, JSON.stringify(studioState));
     }
     updateStudioState(config.studioId, studioState);
     lastContentCursor.current = {
@@ -422,49 +494,80 @@ const deleteConnection = (id: string) => {
 
 
   const saveProgress = () => {
-    if (projectScopedStorageKey) {
-      localStorage.setItem(
-        projectScopedStorageKey,
-        JSON.stringify({
-        objects,
-        connections,
-        zoom,
-        checklistState,
-        savedAt: new Date().toISOString(),
-        })
-      );
-    }
-
-    setSaved("Progress saved.");
-    setTimeout(() => setSaved(""), 2000);
+    void persistStudioState(buildStudioState(), {
+      remote: true,
+      showMessage: true,
+    });
   };
 
   useEffect(() => {
-    const studioState = {
-      objects,
-      connections,
-      zoom,
-      checklistState,
-      savedAt: new Date().toISOString(),
-    };
+    const studioState = buildStudioState();
 
-    if (projectScopedStorageKey) {
-      localStorage.setItem(projectScopedStorageKey, JSON.stringify(studioState));
+    if (applyingRemoteState.current) {
+      applyingRemoteState.current = false;
+      void persistStudioState(studioState, { remote: false });
+      return;
     }
 
+    lastLocalEditAt.current = Date.now();
+
     const timer = window.setTimeout(() => {
-      updateStudioState(config.studioId, studioState);
-    }, 800);
+      void persistStudioState(studioState, { remote: true });
+    }, 900);
 
     return () => window.clearTimeout(timer);
   }, [
-    objects,
-    connections,
-    zoom,
-    checklistState,
-    projectScopedStorageKey,
+    buildStudioState,
+    persistStudioState,
+  ]);
+
+  useEffect(() => {
+    if (!project.setup.projectNumber.trim() || !project.setup.projectPassword) return;
+
+    const timer = window.setInterval(async () => {
+      if (Date.now() - lastLocalEditAt.current < 2500) return;
+
+      const remoteState = await loadStudioState(
+        project.setup.projectNumber,
+        project.setup.projectPassword,
+        config.studioId
+      );
+
+      if (!remoteState || typeof remoteState !== "object") return;
+
+      let remoteJson = "";
+      try {
+        remoteJson = JSON.stringify(remoteState);
+      } catch {
+        return;
+      }
+
+      if (!remoteJson || remoteJson === latestStudioStateJson.current) return;
+
+      const data = remoteState as {
+        objects?: StudioObject[];
+        connections?: StudioConnection[];
+        zoom?: number;
+        checklistState?: Record<string, boolean>;
+      };
+
+      applyingRemoteState.current = true;
+      if (Array.isArray(data.objects)) setObjects(data.objects);
+      if (Array.isArray(data.connections)) setConnections(data.connections);
+      if (typeof data.zoom === "number") setZoom(data.zoom);
+      if (data.checklistState && typeof data.checklistState === "object") {
+        setChecklistState(data.checklistState);
+      }
+      latestStudioStateJson.current = remoteJson;
+      setSaved("Synced latest team changes.");
+      setTimeout(() => setSaved(""), 1800);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [
     config.studioId,
-    updateStudioState,
+    project.setup.projectNumber,
+    project.setup.projectPassword,
   ]);
 
   const handleStudioAlert = () => {
