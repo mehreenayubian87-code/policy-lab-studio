@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { hasValidAdminSession } from "@/app/team-setup/lib/adminAuth";
 import {
+  clearProjectAlertsInSupabase,
   deleteProjectFromSupabase,
   loadProjectFromSupabase,
 } from "@/app/team-setup/lib/projectStore";
@@ -75,6 +76,39 @@ export async function DELETE(
         ok: false,
         error: "The project could not be deleted.",
       },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  _request: Request,
+  context: { params: Promise<{ projectNumber: string }> }
+) {
+  try {
+    if (!(await hasValidAdminSession())) {
+      return NextResponse.json(
+        { ok: false, error: "Admin login is required." },
+        { status: 401 }
+      );
+    }
+
+    const { projectNumber } = await context.params;
+    const project = await clearProjectAlertsInSupabase(projectNumber);
+
+    if (!project) {
+      return NextResponse.json(
+        { ok: false, error: "Project not found." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, project });
+  } catch (error) {
+    console.error("Admin alert resolution failed:", error);
+
+    return NextResponse.json(
+      { ok: false, error: "The project alerts could not be resolved." },
       { status: 500 }
     );
   }

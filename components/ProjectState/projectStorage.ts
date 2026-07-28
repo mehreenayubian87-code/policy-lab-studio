@@ -503,6 +503,34 @@ export async function deleteProjectState(projectNumber: string) {
   return true;
 }
 
+export async function resolveProjectAlerts(projectNumber: string) {
+  const normalized = normalizeProjectNumber(projectNumber);
+  if (!normalized) return null;
+
+  try {
+    const response = await fetch(
+      `/api/professor-admin/projects/${encodeURIComponent(normalized)}`,
+      { method: "PATCH" }
+    );
+    const data = await readJsonResponse<{
+      ok: boolean;
+      project?: ProjectState;
+    }>(response);
+
+    if (!response.ok || !data?.project) return null;
+
+    trySetLocalStorageItem(
+      getStorageKey(normalized),
+      JSON.stringify(data.project)
+    );
+
+    return data.project;
+  } catch (error) {
+    console.error("Unable to resolve project alerts:", error);
+    return null;
+  }
+}
+
 export async function saveProjectNotes(
   projectNumber: string,
   notes: ProjectState["notes"]

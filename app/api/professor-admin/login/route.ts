@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   ADMIN_SESSION_COOKIE,
   createAdminSessionToken,
+  hasValidAdminSession,
   isAdminConfigured,
   validateAdminCredentials,
 } from "@/app/team-setup/lib/adminAuth";
@@ -11,6 +12,10 @@ type AdminLoginBody = {
   username?: string;
   password?: string;
 };
+
+export async function GET() {
+  return NextResponse.json({ isAdmin: await hasValidAdminSession() });
+}
 
 export async function POST(request: Request) {
   if (!isAdminConfigured()) {

@@ -60,6 +60,9 @@ export default function HomePage() {
         <div>
           Under the supervision of <strong>Dr. Evren Tok</strong>
         </div>
+        <div className={styles.copyright}>
+          &copy; 2026 Policy Lab Studio. All rights reserved.
+        </div>
       </footer>
     </main>
   );

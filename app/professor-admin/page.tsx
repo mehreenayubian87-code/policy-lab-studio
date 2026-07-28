@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useProject,
@@ -11,7 +11,7 @@ import {
   deleteProjectState,
   listProjectSummaries,
   loadProjectByNumber,
-  saveProjectState,
+  resolveProjectAlerts,
 } from "@/components/ProjectState/projectStorage";
 import styles from "./page.module.css";
 
@@ -40,6 +40,31 @@ export default function ProfessorAdminPage() {
     () => [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [projects]
   );
+
+  useEffect(() => {
+    let isActive = true;
+
+    const restoreAdminSession = async () => {
+      const response = await fetch("/api/professor-admin/login", { cache: "no-store" });
+      const data = (await response.json().catch(() => null)) as { isAdmin?: boolean } | null;
+
+      if (!isActive || data?.isAdmin !== true) return;
+
+      setIsAdminLoggedIn(true);
+      setIsLoadingProjects(true);
+      const summaries = await listProjectSummaries();
+      if (isActive) {
+        setProjects(summaries);
+        setIsLoadingProjects(false);
+      }
+    };
+
+    restoreAdminSession().catch(() => null);
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleAdminLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -112,11 +137,24 @@ export default function ProfessorAdminPage() {
   const handleOpenProject = async () => {
     if (!selectedProject) return;
 
-    const clearedProject = { ...selectedProject, alerts: [] };
-    await saveProjectState(clearedProject);
+    const clearedProject = await resolveProjectAlerts(
+      selectedProject.setup.projectNumber
+    );
+    if (!clearedProject) {
+      setError("The project alerts could not be resolved. Please try again.");
+      return;
+    }
+
+    setError("");
     replaceProject(clearedProject);
     setSelectedProject(clearedProject);
-    setProjects(await listProjectSummaries());
+    setProjects((currentProjects) =>
+      currentProjects.map((project) =>
+        project.projectNumber === clearedProject.setup.projectNumber
+          ? { ...project, alertCount: 0 }
+          : project
+      )
+    );
     router.push("/dashboard");
   };
 
@@ -182,6 +220,8 @@ export default function ProfessorAdminPage() {
                 Logout
               </button>
             </div>
+
+            {error ? <p className={styles.errorText}>{error}</p> : null}
 
             {isLoadingProjects ? (
               <p className={styles.mutedText}>Loading registered projects...</p>

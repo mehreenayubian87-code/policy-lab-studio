@@ -454,7 +454,7 @@ export function ProjectProvider({
     }));
   };
 
-  const replaceProject = (projectState: ProjectState) => {
+  const replaceProject = useCallback((projectState: ProjectState) => {
     setProject({
       ...projectState,
       setup: normalizeSetup(projectState.setup),
@@ -470,7 +470,7 @@ export function ProjectProvider({
         : [],
       updatedAt: new Date().toISOString(),
     });
-  };
+  }, []);
 
   const replaceSetup = (setup: ProjectSetup) => {
     setProject((previous) => ({
@@ -581,7 +581,7 @@ export function ProjectProvider({
       appendAlert,
       clearProject,
     }),
-    [project]
+    [project, replaceProject, updateStudioState]
   );
 
   return (

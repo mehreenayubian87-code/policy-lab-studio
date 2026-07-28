@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useAdminSession } from "@/components/TeamAccess/TeamSessionBar";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 import type { ProjectObject, ProjectStudioId } from "@/components/ProjectState/ProjectProvider";
 import {
@@ -455,6 +456,7 @@ const inferLayoutSlot = (block: PosterBlock, index: number) => {
 };
 
 export default function PosterStudioPage() {
+  const isAdminSession = useAdminSession();
   const { project, importObjects, appendAlert, updateStudioState } = useProject();
   const projectScopedStorageKey = getProjectStudioStorageKey(
     project.setup.projectNumber,
@@ -2401,9 +2403,11 @@ export default function PosterStudioPage() {
           <Link href="/implementation" className="button secondaryButton">Previous Studio</Link>
           <Link href="/presentation" className="button secondaryButton">Next Studio</Link>
           <Link href="/dashboard" className="button secondaryButton">Dashboard</Link>
-          <div className={styles.alertRow}>
-            <button type="button" className={`button ${styles.alertButton}`} onClick={handlePosterAlert}>Alert Admin</button>
-          </div>
+          {isAdminSession === false ? (
+            <div className={styles.alertRow}>
+              <button type="button" className={`button ${styles.alertButton}`} onClick={handlePosterAlert}>Alert Admin</button>
+            </div>
+          ) : null}
         </div>
       </section>
 

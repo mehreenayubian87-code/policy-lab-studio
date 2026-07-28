@@ -320,6 +320,39 @@ export async function listProjectsFromSupabase() {
   return (data || []).map(toSummary);
 }
 
+export async function clearProjectAlertsInSupabase(projectNumber: string) {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const existingProject = await loadProjectFromSupabase(projectNumber);
+  if (!existingProject) return null;
+
+  const updatedAt = new Date().toISOString();
+  const clearedProject: StoredProjectState = {
+    ...existingProject,
+    alerts: [],
+    updatedAt,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("team_projects")
+    .update({
+      project_state: clearedProject,
+      updated_at: updatedAt,
+    })
+    .in("project_number", projectNumberCandidates(projectNumber))
+    .select("project_state")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.project_state as StoredProjectState | undefined) ?? null;
+}
+
 export async function loadProjectFromSupabase(projectNumber: string) {
   if (!supabaseAdmin) {
     throw new Error("Supabase is not configured.");

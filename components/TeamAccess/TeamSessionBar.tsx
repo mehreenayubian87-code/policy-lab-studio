@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useProject } from "@/components/ProjectState/ProjectProvider";
 
@@ -25,6 +25,12 @@ function isTeamRoute(pathname: string) {
   );
 }
 
+const AdminSessionContext = createContext<boolean | null>(null);
+
+export function useAdminSession() {
+  return useContext(AdminSessionContext);
+}
+
 export default function TeamSessionBar({
   children,
 }: {
@@ -33,9 +39,27 @@ export default function TeamSessionBar({
   const pathname = usePathname();
   const router = useRouter();
   const { project, clearProject } = useProject();
+  const [isAdminSession, setIsAdminSession] = useState<boolean | null>(null);
 
   const isLoggedIn = Boolean(project.setup.projectNumber.trim());
   const isTeamPage = isTeamRoute(pathname ?? "");
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetch("/api/professor-admin/login", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: { isAdmin?: boolean }) => {
+        if (isActive) setIsAdminSession(data.isAdmin === true);
+      })
+      .catch(() => {
+        if (isActive) setIsAdminSession(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (isTeamPage && !isLoggedIn) {
@@ -49,7 +73,7 @@ export default function TeamSessionBar({
   };
 
   return (
-    <>
+    <AdminSessionContext.Provider value={isAdminSession}>
       {isLoggedIn && isTeamPage ? (
         <div
           style={{
@@ -66,12 +90,22 @@ export default function TeamSessionBar({
             backdropFilter: "blur(10px)",
           }}
         >
-          <button type="button" className="button secondaryButton" onClick={handleLogout}>
-            Logout
-          </button>
+          {isAdminSession === true ? (
+            <button
+              type="button"
+              className="button secondaryButton"
+              onClick={() => router.push("/professor-admin")}
+            >
+              Return to projects list
+            </button>
+          ) : isAdminSession === false ? (
+            <button type="button" className="button secondaryButton" onClick={handleLogout}>
+              Logout
+            </button>
+          ) : null}
         </div>
       ) : null}
       {children}
-    </>
+    </AdminSessionContext.Provider>
   );
 }

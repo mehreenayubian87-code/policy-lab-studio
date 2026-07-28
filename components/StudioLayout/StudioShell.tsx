@@ -2,6 +2,7 @@
 
 import { ReactNode, useState } from "react";
 import Link from "next/link";
+import { useAdminSession } from "@/components/TeamAccess/TeamSessionBar";
 import styles from "./StudioShell.module.css";
 
 type StudioShellProps = {
@@ -30,6 +31,7 @@ export default function StudioShell({
   onAlert,
   alertLabel = "Alert Admin",
 }: StudioShellProps) {
+  const isAdminSession = useAdminSession();
   const [openPanel, setOpenPanel] = useState<"tools" | "review" | null>(null);
   const studioTitle = title.endsWith(" Studio")
     ? title.replace(/ Studio$/, "")
@@ -73,7 +75,7 @@ export default function StudioShell({
               Dashboard
             </Link>
 
-            {onAlert ? (
+            {onAlert && isAdminSession === false ? (
               <div className={styles.alertRow}>
                 <button
                   type="button"
